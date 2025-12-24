@@ -110,7 +110,9 @@ let accessToken = null;
 let idToken = null;
 
 function getAuthToken() {
-    return accessToken;
+    // For Auth0 SPAs, use ID token (always JWT) instead of access token (might be opaque)
+    // The ID token contains the user's email and can be verified
+    return idToken || accessToken;
 }
 
 function parseHash() {

@@ -74,6 +74,21 @@ exports.handler = async (event, context) => {
                 const jwt = require('jsonwebtoken');
                 const jwksClient = require('jwks-rsa');
                 
+                // Check if token is a JWT (should have 3 parts separated by dots)
+                const tokenParts = authToken.split('.');
+                if (tokenParts.length !== 3) {
+                    console.error('Token is not a JWT (opaque token) - length:', tokenParts.length);
+                    return {
+                        statusCode: 401,
+                        headers: {
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        body: JSON.stringify({ 
+                            error: 'Unauthorized: Token is not a JWT. For Auth0 SPAs, you need to use an ID token or configure a custom API to get JWT access tokens.' 
+                        })
+                    };
+                }
+                
                 const client = jwksClient({
                     jwksUri: `https://${AUTH0_DOMAIN}/.well-known/jwks.json`
                 });
