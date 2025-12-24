@@ -1,7 +1,7 @@
 {
-  "name": "netlify-functions",
+  "name": "coffee-brew-tracker",
   "version": "1.0.0",
-  "description": "Netlify serverless functions for coffee brew tracker",
+  "description": "Coffee Brew Tracker - Track your coffee brews",
   "dependencies": {
     "jsonwebtoken": "^9.0.2",
     "jwks-rsa": "^3.1.0"
