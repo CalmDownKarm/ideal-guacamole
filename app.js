@@ -746,7 +746,17 @@ async function createBrewCard(record) {
     const methodClass = method.toLowerCase();
     
     // Get user who created the brew
-    const createdBy = fields['User'] || '';
+    // Handle different field types: string, object (Collaborator), or array (linked record)
+    let createdBy = '';
+    const userField = fields['User'];
+    if (userField) {
+        if (typeof userField === 'string') {
+            createdBy = userField;
+        } else if (typeof userField === 'object') {
+            // Collaborator field type has email and name properties
+            createdBy = userField.email || userField.name || userField.id || '';
+        }
+    }
     
     card.innerHTML = `
         <div class="brew-card-header">
