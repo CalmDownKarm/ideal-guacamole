@@ -108,6 +108,7 @@ async function callAirtableProxy(action, table, options = {}) {
 // Auth0 Authentication
 let accessToken = null;
 let idToken = null;
+let userEmail = null; // Store logged-in user's email
 
 function getAuthToken() {
     // For Auth0 SPAs, use ID token (always JWT) instead of access token (might be opaque)
@@ -167,6 +168,8 @@ function parseHash() {
                         exp: payload.exp,
                         expDate: new Date(payload.exp * 1000).toISOString()
                     });
+                    // Store user email for later use
+                    userEmail = payload.email;
                 }
             } catch (e) {
                 console.error('Error decoding ID token:', e);
@@ -196,6 +199,7 @@ function login() {
 function logout() {
     accessToken = null;
     idToken = null;
+    userEmail = null;
     updateAuthUI();
     if (auth0Client) {
         auth0Client.logout({
@@ -330,14 +334,25 @@ function initializeForm() {
     const numberOfPoursInput = document.getElementById('number-of-pours');
     const grindSizeInput = document.getElementById('grind-size');
     
+    // Track if grind size has been manually edited by user
+    let grindSizeManuallySet = false;
+    
+    // Listen for user input on grind size field
+    grindSizeInput.addEventListener('input', () => {
+        grindSizeManuallySet = true;
+    });
+    
     // Make setBrewerDefaults available globally for form reset
-    window.setBrewerDefaults = function(brewer) {
+    // Pass forceReset=true to reset grind size even if manually set (used after form submission)
+    window.setBrewerDefaults = function(brewer, forceReset = false) {
         if (!brewer) {
             // Default values for no brewer selected
             doseInput.value = '15';
             drinkWeightInput.value = '250';
             numberOfPoursInput.value = '2';
-            grindSizeInput.value = '4';
+            if (forceReset || !grindSizeManuallySet) {
+                grindSizeInput.value = '4';
+            }
             return;
         }
         
@@ -346,22 +361,29 @@ function initializeForm() {
                 doseInput.value = '18';
                 drinkWeightInput.value = '54';
                 numberOfPoursInput.value = '1';
-                grindSizeInput.value = '4'; // Keep default, user can adjust
                 break;
             case 'ORB Soup':
                 doseInput.value = '22';
                 drinkWeightInput.value = '88';
                 numberOfPoursInput.value = '2';
-                grindSizeInput.value = '4';
                 break;
             default:
                 // Default for all other brewers
                 doseInput.value = '15';
                 drinkWeightInput.value = '250';
                 numberOfPoursInput.value = '2';
-                grindSizeInput.value = '4';
                 break;
         }
+        
+        // Only set grind size if not manually edited or if force resetting
+        if (forceReset || !grindSizeManuallySet) {
+            grindSizeInput.value = '4';
+        }
+    };
+    
+    // Reset the manual flag (call this after successful form submission)
+    window.resetGrindSizeFlag = function() {
+        grindSizeManuallySet = false;
     };
     
     // Set defaults when brewer changes
@@ -488,6 +510,15 @@ async function submitBrew() {
         }
     };
     
+    // Add user email (CreatedBy field)
+    if (userEmail) {
+        brewData.fields['User'] = userEmail;
+    }
+    
+    // Auto-set Brew Method based on brewer
+    const brewMethod = (brewer === 'Espresso' || brewer === 'ORB Soup') ? 'Espresso' : 'Filter';
+    brewData.fields['Brew Method'] = brewMethod;
+    
     // Add optional fields only if they have values
     const totalBrewTime = formData.get('total-brew-time');
     console.log('Total Brew Time raw value:', totalBrewTime);
@@ -519,6 +550,11 @@ async function submitBrew() {
         brewData.fields['Notes & Tasting'] = notes.trim();
     }
     
+    const recipe = formData.get('recipe');
+    if (recipe && recipe.trim() !== '') {
+        brewData.fields['Recipe'] = recipe.trim();
+    }
+    
     if (numberOfPours) {
         brewData.fields['Number of Pours'] = parseInt(numberOfPours);
     }
@@ -543,23 +579,64 @@ async function submitBrew() {
 
         // Success
         showMessage('Brew saved successfully!', 'success');
-        form.reset();
-        document.getElementById('rating-display').textContent = '5';
         
-        // Reset defaults after form reset
-        const brewerSelect = document.getElementById('brewer');
-        if (brewerSelect && window.setBrewerDefaults) {
-            window.setBrewerDefaults(brewerSelect.value);
+        // Reset all form fields to defaults
+        form.reset();
+        
+        // Reset the grind size manual flag so defaults apply
+        if (window.resetGrindSizeFlag) {
+            window.resetGrindSizeFlag();
         }
+        
+        // Set default values
+        const brewerSelect = document.getElementById('brewer');
+        if (brewerSelect) {
+            brewerSelect.value = ''; // Clear brewer selection
+        }
+        
+        // Apply defaults with forceReset to ensure grind size is reset
+        if (window.setBrewerDefaults) {
+            window.setBrewerDefaults('', true); // forceReset = true
+        }
+        
         // Set default grinder
         const grinderSelect = document.getElementById('grinder');
         if (grinderSelect) {
             grinderSelect.value = 'P80';
         }
+        
         // Set default water temperature
         const waterTempInput = document.getElementById('water-temperature');
         if (waterTempInput) {
             waterTempInput.value = '93';
+        }
+        
+        // Reset enjoyment slider and display
+        const enjoymentSlider = document.getElementById('enjoyment');
+        const ratingDisplay = document.getElementById('rating-display');
+        if (enjoymentSlider) {
+            enjoymentSlider.value = '5';
+        }
+        if (ratingDisplay) {
+            ratingDisplay.textContent = '5';
+        }
+        
+        // Clear recipe field
+        const recipeInput = document.getElementById('recipe');
+        if (recipeInput) {
+            recipeInput.value = '';
+        }
+        
+        // Clear total brew time
+        const brewTimeInput = document.getElementById('total-brew-time');
+        if (brewTimeInput) {
+            brewTimeInput.value = '';
+        }
+        
+        // Clear notes
+        const notesInput = document.getElementById('taste');
+        if (notesInput) {
+            notesInput.value = '';
         }
         
         // Reload brews list
