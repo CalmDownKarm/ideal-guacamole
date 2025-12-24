@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Coffee Brew Tracker - Track your coffee brews">
+    <title>Coffee Brew Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>☕ Coffee Brew Tracker</h1>
+        </header>
+
+        <main>
+            <div class="tabs">
+                <button class="tab-button active" data-tab="form">New Brew</button>
+                <button class="tab-button" data-tab="list">My Brews</button>
+            </div>
+
+            <!-- Form Tab -->
+            <div id="form-tab" class="tab-content active">
+                <form id="brew-form" class="brew-form">
+                    <div class="form-group">
+                        <label for="coffee">Coffee from Stash *</label>
+                        <select id="coffee" name="coffee" required>
+                            <option value="">Loading coffees...</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="method">Method *</label>
+                        <select id="method" name="method" required>
+                            <option value="">Select method</option>
+                            <option value="filter">Filter</option>
+                            <option value="espresso">Espresso</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="grinder">Grinder *</label>
+                            <input type="text" id="grinder" name="grinder" required placeholder="e.g., Comandante">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="grind-size">Grind Size *</label>
+                            <input type="text" id="grind-size" name="grind-size" required placeholder="e.g., 20 clicks">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="brewer">Brewer *</label>
+                            <input type="text" id="brewer" name="brewer" required placeholder="e.g., V60">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="number-of-pours">Number of Pours</label>
+                            <input type="number" id="number-of-pours" name="number-of-pours" min="0" placeholder="e.g., 4">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="water-temperature">Water Temperature (°C)</label>
+                            <input type="number" id="water-temperature" name="water-temperature" min="0" max="100" step="0.1" placeholder="e.g., 93">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="total-brew-time">Total Brew Time (mm:ss)</label>
+                            <input type="text" id="total-brew-time" name="total-brew-time" pattern="[0-9]+:[0-9]{2}" placeholder="e.g., 2:00">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="dose">Dose (g) *</label>
+                            <input type="number" id="dose" name="dose" required min="0" step="0.1" placeholder="e.g., 20.0">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="water-weight">Drink Weight (g) *</label>
+                            <input type="number" id="water-weight" name="water-weight" required min="0" step="0.1" placeholder="e.g., 300.0">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="enjoyment">Enjoyment Rating (1-10) *</label>
+                        <div class="rating-container">
+                            <input type="range" id="enjoyment" name="enjoyment" min="1" max="10" value="5" required>
+                            <span id="rating-display">5</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="taste">Notes & Tasting</label>
+                        <textarea id="taste" name="taste" rows="3" placeholder="Describe what you taste..."></textarea>
+                    </div>
+
+                    <button type="submit" class="submit-button">Save Brew</button>
+                </form>
+
+                <div id="form-message" class="message"></div>
+            </div>
+
+            <!-- List Tab -->
+            <div id="list-tab" class="tab-content">
+                <div id="brews-list" class="brews-list">
+                    <div class="loading">Loading brews...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+

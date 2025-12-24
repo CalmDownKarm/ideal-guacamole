@@ -1,0 +1,36 @@
+name: Deploy to Netlify
+
+on:
+  push:
+    branches:
+      - main  # Change to 'master' if your default branch is master
+  pull_request:
+    branches:
+      - main  # Change to 'master' if your default branch is master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Netlify
+        uses: netlify/actions/cli@master
+        with:
+          args: deploy --prod --dir=. --functions=netlify/functions
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        if: github.ref == 'refs/heads/main'  # Only deploy on main branch
+
+      - name: Deploy preview
+        uses: netlify/actions/cli@master
+        with:
+          args: deploy --dir=. --functions=netlify/functions
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        if: github.ref != 'refs/heads/main'  # Deploy preview for PRs
+
