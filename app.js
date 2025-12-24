@@ -59,6 +59,10 @@ async function callAirtableProxy(action, table, options = {}) {
     // Include Auth0 access token for create actions
     const authToken = action === 'create' ? getAuthToken() : null;
     
+    if (action === 'create' && !authToken) {
+        console.warn('No auth token available for create action');
+    }
+    
     const response = await fetch(PROXY_URL, {
         method: 'POST',
         headers: {
@@ -76,9 +80,16 @@ async function callAirtableProxy(action, table, options = {}) {
     });
 
     if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+            errorData = await response.json();
+        } catch (e) {
+            // If response isn't JSON, create error from status
+            errorData = { error: `Request failed: ${response.statusText}` };
+        }
         const error = new Error(errorData.error || `Request failed: ${response.statusText}`);
         error.status = response.status;
+        error.responseData = errorData;
         throw error;
     }
 
@@ -393,10 +404,26 @@ async function submitBrew() {
     const numberOfPours = formData.get('number-of-pours') || getDefaultValue('number-of-pours', brewer);
     const waterTemp = formData.get('water-temperature') || getDefaultValue('water-temperature', brewer);
     
+    // Validate required fields
+    const coffeeId = formData.get('coffee');
+    if (!coffeeId) {
+        showMessage('Please select a coffee from your stash.', 'error');
+        submitButton.disabled = false;
+        submitButton.textContent = 'Save Brew';
+        return;
+    }
+    
+    if (!brewer) {
+        showMessage('Please select a brewer.', 'error');
+        submitButton.disabled = false;
+        submitButton.textContent = 'Save Brew';
+        return;
+    }
+    
     // Prepare brew data
     const brewData = {
         fields: {
-            'Coffee': [formData.get('coffee')], // Link to coffee record
+            'Coffee': [coffeeId], // Link to coffee record
             'Brew Date': dateTime,
             'Grinder Used': grinder,
             'Grind Size': parseFloat(grindSize),
@@ -419,6 +446,17 @@ async function submitBrew() {
     }
     
     try {
+        // Verify we have an auth token before submitting
+        if (!getAuthToken()) {
+            accessToken = null;
+            idToken = null;
+            updateAuthUI();
+            showMessage('You are not logged in. Please login to create brews.', 'error');
+            submitButton.disabled = false;
+            submitButton.textContent = 'Save Brew';
+            return;
+        }
+        
         await callAirtableProxy('create', CONFIG.brewTable, { data: brewData });
 
         // Success
@@ -447,17 +485,32 @@ async function submitBrew() {
         
     } catch (error) {
         console.error('Error saving brew:', error);
+        console.error('Error details:', {
+            status: error.status,
+            message: error.message,
+            responseData: error.responseData
+        });
         
-        // Handle authentication errors
-        if (error.status === 401 || error.message.includes('Unauthorized')) {
+        // Handle authentication errors - only logout on actual token/auth failures
+        const errorMessage = error.message || '';
+        const isAuthError = error.status === 401 && (
+            errorMessage.includes('token') || 
+            errorMessage.includes('Unauthorized') ||
+            errorMessage.includes('authentication')
+        );
+        
+        if (isAuthError) {
+            // Only logout on actual authentication failures, not validation errors
             accessToken = null;
             idToken = null;
             updateAuthUI();
             showMessage('Session expired. Please login again.', 'error');
-        } else if (error.status === 403 || error.message.includes('Forbidden') || error.message.includes('not authorized')) {
+        } else if (error.status === 403 || errorMessage.includes('Forbidden') || errorMessage.includes('not authorized')) {
             showMessage('Your email is not authorized to create brews. Please contact the administrator.', 'error');
         } else {
-            showMessage(`Error saving brew: ${error.message}`, 'error');
+            // Don't logout on other errors - might be validation or data issues
+            const userMessage = errorMessage || 'An error occurred while saving the brew. Please check the console for details.';
+            showMessage(`Error saving brew: ${userMessage}`, 'error');
         }
     } finally {
         submitButton.disabled = false;

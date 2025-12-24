@@ -222,12 +222,31 @@ exports.handler = async (event, context) => {
 
         // Make request to Airtable
         const response = await fetch(url, options);
-        const responseData = await response.json();
+        let responseData;
+        try {
+            responseData = await response.json();
+        } catch (e) {
+            // If response isn't JSON, create error message
+            const text = await response.text();
+            return {
+                statusCode: response.status,
+                headers: {
+                    'Access-Control-Allow-Origin': '*'
+                },
+                body: JSON.stringify({ error: `Airtable API error: ${text || response.statusText}` })
+            };
+        }
 
         if (!response.ok) {
             return {
                 statusCode: response.status,
-                body: JSON.stringify({ error: responseData.error?.message || 'Airtable API error' })
+                headers: {
+                    'Access-Control-Allow-Origin': '*'
+                },
+                body: JSON.stringify({ 
+                    error: responseData.error?.message || responseData.error || 'Airtable API error',
+                    details: responseData
+                })
             };
         }
 
