@@ -174,16 +174,38 @@ exports.handler = async (event, context) => {
                 }
                 
                 console.log('Token verified successfully for:', decoded.email || decoded.sub);
+                console.log('All token claims:', JSON.stringify(decoded, null, 2));
                 
-                // Extract email from token
-                const userEmail = decoded.email || decoded['https://your-namespace/email'];
+                // Extract email from token - check multiple possible locations
+                // Auth0 ID tokens typically have email at root level
+                // But it might also be in custom claims or nested objects
+                let userEmail = decoded.email;
+                
+                // Check for email in common alternative locations
                 if (!userEmail) {
+                    // Check for custom namespace claims (Auth0 custom rules)
+                    for (const key of Object.keys(decoded)) {
+                        if (key.includes('/email') || key.endsWith('email')) {
+                            userEmail = decoded[key];
+                            console.log('Found email in custom claim:', key);
+                            break;
+                        }
+                    }
+                }
+                
+                // If still no email, check if there's a name or nickname we can use temporarily
+                // But really, we need the email
+                if (!userEmail) {
+                    console.error('No email found in token. Available claims:', Object.keys(decoded));
                     return {
                         statusCode: 401,
                         headers: {
                             'Access-Control-Allow-Origin': '*'
                         },
-                        body: JSON.stringify({ error: 'Unauthorized: Email not found in token' })
+                        body: JSON.stringify({ 
+                            error: 'Unauthorized: Email not found in token. Please log out and log back in, or check Auth0 settings.',
+                            availableClaims: Object.keys(decoded)
+                        })
                     };
                 }
                 

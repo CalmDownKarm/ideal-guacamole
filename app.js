@@ -30,7 +30,7 @@ function initializeAuth0() {
             clientID: clientId,
             redirectUri: window.location.origin,
             responseType: 'token id_token',
-            scope: 'openid profile'
+            scope: 'openid profile email'
         });
         console.log('Auth0 initialized successfully');
     } catch (error) {
@@ -112,7 +112,14 @@ let idToken = null;
 function getAuthToken() {
     // For Auth0 SPAs, use ID token (always JWT) instead of access token (might be opaque)
     // The ID token contains the user's email and can be verified
-    return idToken || accessToken;
+    const token = idToken || accessToken;
+    console.log('getAuthToken called:', {
+        hasIdToken: !!idToken,
+        hasAccessToken: !!accessToken,
+        tokenLength: token ? token.length : 0,
+        tokenPreview: token ? token.substring(0, 50) + '...' : 'null'
+    });
+    return token;
 }
 
 function parseHash() {
@@ -140,10 +147,30 @@ function parseHash() {
         if (authResult && authResult.accessToken && authResult.idToken) {
             accessToken = authResult.accessToken;
             idToken = authResult.idToken;
+            
+            // Debug: Decode ID token to see what's in it
+            try {
+                const tokenParts = idToken.split('.');
+                if (tokenParts.length === 3) {
+                    const payload = JSON.parse(atob(tokenParts[1]));
+                    console.log('ID Token payload:', {
+                        email: payload.email,
+                        sub: payload.sub,
+                        aud: payload.aud,
+                        iss: payload.iss,
+                        exp: payload.exp,
+                        expDate: new Date(payload.exp * 1000).toISOString()
+                    });
+                }
+            } catch (e) {
+                console.error('Error decoding ID token:', e);
+            }
+            
             window.location.hash = '';
             updateAuthUI();
         } else {
             // No tokens in hash, update UI to show login
+            console.log('No tokens in authResult:', authResult);
             updateAuthUI();
         }
     });
@@ -154,7 +181,10 @@ function login() {
         alert('Auth0 not configured. Please set AUTH0_DOMAIN and AUTH0_CLIENT_ID.');
         return;
     }
-    auth0Client.authorize();
+    // Request email scope to ensure email is in ID token
+    auth0Client.authorize({
+        scope: 'openid profile email'
+    });
 }
 
 function logout() {
