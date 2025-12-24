@@ -152,7 +152,13 @@ function parseHash() {
             try {
                 const tokenParts = idToken.split('.');
                 if (tokenParts.length === 3) {
-                    const payload = JSON.parse(atob(tokenParts[1]));
+                    // Handle URL-safe base64 (JWT uses base64url encoding)
+                    let base64 = tokenParts[1].replace(/-/g, '+').replace(/_/g, '/');
+                    // Add padding if needed
+                    while (base64.length % 4) {
+                        base64 += '=';
+                    }
+                    const payload = JSON.parse(atob(base64));
                     console.log('ID Token payload:', {
                         email: payload.email,
                         sub: payload.sub,
@@ -437,13 +443,20 @@ async function submitBrew() {
         }
     }
     
-    // Get values with defaults
-    const grinder = formData.get('grinder') || getDefaultValue('grinder', brewer);
-    const grindSize = formData.get('grind-size') || getDefaultValue('grind-size', brewer);
-    const dose = formData.get('dose') || getDefaultValue('dose', brewer);
-    const drinkWeight = formData.get('water-weight') || getDefaultValue('drink-weight', brewer);
-    const numberOfPours = formData.get('number-of-pours') || getDefaultValue('number-of-pours', brewer);
-    const waterTemp = formData.get('water-temperature') || getDefaultValue('water-temperature', brewer);
+    // Get values with defaults (empty strings should use defaults too)
+    const getValueOrDefault = (fieldName, defaultField) => {
+        const value = formData.get(fieldName);
+        return (value && value.trim() !== '') ? value : getDefaultValue(defaultField, brewer);
+    };
+    
+    const grinder = getValueOrDefault('grinder', 'grinder');
+    const grindSize = getValueOrDefault('grind-size', 'grind-size');
+    const dose = getValueOrDefault('dose', 'dose');
+    const drinkWeight = getValueOrDefault('water-weight', 'drink-weight');
+    const numberOfPours = getValueOrDefault('number-of-pours', 'number-of-pours');
+    const waterTemp = getValueOrDefault('water-temperature', 'water-temperature');
+    
+    console.log('Form values:', { grinder, grindSize, dose, drinkWeight, numberOfPours, waterTemp });
     
     // Validate required fields
     const coffeeId = formData.get('coffee');
