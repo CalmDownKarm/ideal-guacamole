@@ -282,7 +282,8 @@ async function loadCoffees() {
     
     try {
         const data = await callAirtableProxy('list', CONFIG.coffeeTable, {
-            filter: '{Opened}'
+            filter: 'AND({Opened}, NOT({Killed}))',
+            sort: { field: 'Roast Date', direction: 'asc' }
         });
         
         // Clear loading message
@@ -364,6 +365,8 @@ async function submitBrew() {
             idToken = null;
             updateAuthUI();
             showMessage('Session expired. Please login again.', 'error');
+        } else if (error.status === 403 || error.message.includes('Forbidden') || error.message.includes('not authorized')) {
+            showMessage('Your email is not authorized to create brews. Please contact the administrator.', 'error');
         } else {
             showMessage(`Error saving brew: ${error.message}`, 'error');
         }

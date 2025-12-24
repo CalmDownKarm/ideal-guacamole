@@ -23,27 +23,81 @@ A simple, mobile-friendly web app for tracking your coffee brews using Airtable 
 
 ### 1. Airtable Setup
 
-You'll need to create two tables in your Airtable base:
+You'll need to create three tables in your Airtable base:
 
-#### Table 1: Coffee Stash
-This table should contain your coffee inventory. It needs at least:
-- **Name** (Single line text) - The name of the coffee
+#### Table 1: Coffee Freezer (Coffee Stash)
 
-#### Table 2: Brews
-This table will store all your brew records. Create the following fields:
+This table contains your coffee inventory. Create the following fields:
 
-- **Coffee** (Link to another record) - Links to your Coffee Stash table
-- **Date & Time** (Date with time) - Automatically set when you create a brew
-- **Method** (Single select) - Options: "filter", "espresso"
-- **Grinder** (Single line text)
-- **Grind Size** (Single line text)
-- **Brewer** (Single line text)
-- **Extraction Time** (Number) - In seconds
-- **Dose** (Number) - In grams
-- **Water Weight** (Number) - In grams
-- **Enjoyment Rating** (Number) - 1-10
-- **Taste** (Long text)
-- **Recipe** (Long text) - Optional
+| Field Name | Field Type | Required | Description |
+|-----------|------------|----------|-------------|
+| **Name/Producer** | Single line text | Yes | The name/producer of the coffee |
+| **Roast** | Single line text | No | Roast level (e.g., Light, Medium, Dark, Ultralight, Filter) |
+| **Roast Date** | Date | No | Date the coffee was roasted |
+| **Roaster** | Single line text | No | Name of the roaster |
+| **Process** | Single line text | No | Processing method (e.g., Washed, Natural, Honey, Thermal Shock) |
+| **Varietal** | Single line text | No | Coffee varietal (e.g., Geisha, Pink Bourbon, Sidra) |
+| **Origin** | Single line text | No | Country/region of origin |
+| **Notes** | Long text | No | Tasting notes or description |
+| **Opened** | Checkbox | No | Whether the coffee has been opened (used for filtering) |
+| **Days From Roast** | Number | No | Calculated field: days since roast date |
+| **Frozen** | Checkbox | No | Whether the coffee is frozen |
+| **Killed** | Checkbox | No | Whether the coffee is finished/consumed |
+| **Espresso Rating (0-10)** | Number | No | Rating for espresso preparation (0-10) |
+| **Filter Rating (0-10)** | Number | No | Rating for filter preparation (0-10) |
+| **Weight(g)** | Number | No | Current weight in grams |
+| **Price (USD without shipping)** | Number | No | Purchase price in USD |
+| **Price per kg** | Number | No | Price per kilogram (calculated) |
+| **Price per 18g** | Number | No | Price per 18g dose (calculated) |
+| **Frozen Date** | Date | No | Date the coffee was frozen |
+| **Thaw Date** | Date | No | Date the coffee was thawed |
+
+**Note**: Only the **Name/Producer** field is required. The app filters coffees by the **Opened** checkbox field.
+
+#### Table 2: Allowed Users
+
+This table controls who can create brews. Create this table with:
+
+| Field Name | Field Type | Required | Description |
+|-----------|------------|----------|-------------|
+| **Email** | Single line text | Yes | The email address of authorized users (case-insensitive) |
+
+**Setup**:
+- Create a table named "Allowed Users" (or set `ALLOWED_USERS_TABLE` environment variable to use a different name)
+- Add rows with email addresses of users who should be able to create brews
+- Email matching is case-insensitive
+
+#### Table 3: Coffee Brews
+
+This table stores all your brew records. Create the following fields:
+
+| Field Name | Field Type | Required | Description |
+|-----------|------------|----------|-------------|
+| **Brew** | Auto number | Auto | Auto-incrementing brew number |
+| **Coffee** | Link to another record | Yes | Links to Coffee Freezer table |
+| **Brew Date** | Date with time | Yes | Date and time of the brew (automatically set) |
+| **Grinder Used** | Single line text | Yes | Grinder used (e.g., P80, 078, 064S, ZP6, K6) |
+| **Grind Size** | Number | Yes | Grind size setting (0-10, 0.1 increments) |
+| **Brew Method** | Single line text | No | Brew method (e.g., Filter, Espresso) |
+| **Brewer** | Single line text | Yes | Brewer used (e.g., V60, Neo, Pulsar, Orea V4, ORB Soup, Espresso) |
+| **Number of Pours** | Number | No | Number of water pours during brewing |
+| **Water Temperature (°C)** | Number | No | Water temperature in Celsius |
+| **Dose** | Number | Yes | Coffee dose in grams |
+| **Drink Weight** | Number | Yes | Final drink weight in grams |
+| **Ratio** | Number | No | Coffee to water ratio (calculated: Drink Weight / Dose) |
+| **Total Brew Time** | Single line text | No | Total brew time in mm:ss format (e.g., "2:30") |
+| **Enjoyment Rating** | Number | Yes | Enjoyment rating (1-10) |
+| **Notes & Tasting** | Long text | No | Tasting notes and observations |
+
+**Linked Fields** (automatically populated from Coffee Freezer):
+- **Origin (from Coffee)** - Linked field showing origin
+- **Name/Producer (from Coffee)** - Linked field showing coffee name
+- **Roast Date (from Coffee)** - Linked field showing roast date
+- **Roaster (from Coffee)** - Linked field showing roaster
+- **Process (from Coffee)** - Linked field showing process
+- **Varietal (from Coffee)** - Linked field showing varietal
+
+**Note**: The **Coffee** field must link to the Coffee Freezer table. The app will only show coffees where **Opened** is checked in the Coffee Freezer table.
 
 ### 2. Get Your Airtable Credentials
 
@@ -195,19 +249,13 @@ This is the easiest way to set up automatic deployments. Netlify will automatica
    - Add `AUTH0_DOMAIN` = your Auth0 domain (e.g., `your-tenant.auth0.com`)
    - Add `AUTH0_CLIENT_ID` = your Auth0 application client ID
    - Add `AUTH0_AUDIENCE` = your Auth0 API identifier (optional, defaults to Auth0 Management API)
+   - Add `ALLOWED_USERS_TABLE` = name of your allowed users table (optional, defaults to "Allowed Users")
    - Click "Save"
    - Go to Deploys → Trigger deploy → Deploy site (to redeploy with the new environment variables)
 
-5. **Configure Auth0**:
-   - Sign up for a free Auth0 account at [auth0.com](https://auth0.com)
-   - Create a new Application (Single Page Application)
-   - Copy your **Domain** and **Client ID**
-   - Set **Allowed Callback URLs** to: `https://your-site.netlify.app`
-   - Set **Allowed Logout URLs** to: `https://your-site.netlify.app`
-   - Set **Allowed Web Origins** to: `https://your-site.netlify.app`
-   - **Note**: Auth0 credentials are automatically loaded from Netlify environment variables via a serverless function - no need to hardcode them in HTML
+5. **Configure Auth0** (see detailed instructions in "Auth0 Setup" section below)
 
-5. **Done!** Your site is now live and will automatically redeploy whenever you push to GitHub.
+6. **Done!** Your site is now live and will automatically redeploy whenever you push to GitHub.
 
 **Pros**: Simplest setup, automatic deployments on every push, free HTTPS, custom domains, serverless functions included
 
@@ -262,20 +310,211 @@ Cloudflare Pages supports serverless functions (Workers), but requires additiona
 
 ### Authentication
 
-🔐 **This app uses Auth0 for authentication** - only authenticated users can create new brews, but anyone can view existing brews.
+🔐 **This app uses Auth0 for authentication** - only authenticated users with whitelisted email addresses can create new brews, but anyone can view existing brews.
 
 **How it works**:
 - Users must login with Auth0 to create new brews
+- Email addresses must be in the "Allowed Users" Airtable table
 - Viewing brews is public (no authentication required)
 - Auth0 handles all authentication securely
 - JWT tokens are verified on the backend before allowing brew creation
+- Email addresses are extracted from the JWT token and checked against the Airtable whitelist
 
-**Setup**:
-1. Create a free Auth0 account
-2. Create a Single Page Application in Auth0
-3. Configure callback URLs and web origins
-4. Add your Auth0 domain and client ID to `index.html` or via environment variables
-5. Set `AUTH0_DOMAIN` environment variable in Netlify
+**Email Whitelist**:
+- Create an "Allowed Users" table in Airtable (or set `ALLOWED_USERS_TABLE` environment variable to use a different table name)
+- Add an "Email" field (Single line text)
+- Add rows with email addresses of users who should be able to create brews
+- Email matching is case-insensitive
+- If the table doesn't exist, access will be denied for security
+
+**Setup**: See the detailed "Auth0 Setup" section below for step-by-step instructions.
+
+## Auth0 Setup (Detailed Guide)
+
+Auth0 provides secure authentication for your app. Follow these steps to set up Auth0 from scratch:
+
+### Step 1: Create Auth0 Account
+
+1. Go to [auth0.com](https://auth0.com) and click **"Sign Up"** (free tier available)
+2. Choose **"Sign up with Email"** or use a social login (Google, GitHub, etc.)
+3. Complete the signup process
+4. Verify your email if prompted
+5. You'll be taken to your Auth0 Dashboard
+
+### Step 2: Create an Application
+
+1. In the Auth0 Dashboard, go to **Applications** → **Applications** (left sidebar)
+2. Click the **"+ Create Application"** button (top right)
+3. Enter a name for your application (e.g., "Coffee Brew Tracker")
+4. Select **"Single Page Web Applications"** as the application type
+5. Click **"Create"**
+
+### Step 3: Configure Application Settings
+
+After creating the application, you'll see the application settings page. Configure the following:
+
+#### Allowed Callback URLs
+These are the URLs Auth0 can redirect to after authentication:
+- Add your Netlify site URL: `https://your-site.netlify.app`
+- For local development with Netlify Dev, also add: `http://localhost:8888`
+- **Format**: One URL per line, or comma-separated
+- **Example**: 
+  ```
+  https://your-site.netlify.app
+  http://localhost:8888
+  ```
+
+#### Allowed Logout URLs
+These are the URLs Auth0 can redirect to after logout:
+- Add your Netlify site URL: `https://your-site.netlify.app`
+- For local development: `http://localhost:8888`
+- **Format**: Same as callback URLs
+
+#### Allowed Web Origins
+These enable CORS for API calls from your frontend:
+- Add your Netlify site URL: `https://your-site.netlify.app`
+- For local development: `http://localhost:8888`
+- **Format**: Same as callback URLs
+
+#### Allowed Origins (CORS)
+- Same as Allowed Web Origins
+
+**Important**: 
+- Make sure to click **"Save Changes"** at the bottom of the page after making changes
+- URLs are case-sensitive - use exact URLs
+- Don't include trailing slashes
+
+### Step 4: Get Your Auth0 Credentials
+
+1. On the application settings page, find the **"Basic Information"** section at the top
+2. Copy the following values (you'll need these for Netlify environment variables):
+   - **Domain**: Looks like `your-tenant.auth0.com` or `your-tenant.us.auth0.com`
+     - Example: `dev-abc123.us.auth0.com`
+   - **Client ID**: A long alphanumeric string
+     - Example: `xYz123AbC456DeF789`
+
+**Keep these values secure** - you'll need them in the next step.
+
+### Step 5: Configure Auth0 API (Optional but Recommended)
+
+If you want to use a custom API identifier (instead of the default Auth0 Management API):
+
+1. Go to **Applications** → **APIs** (left sidebar)
+2. Click **"+ Create API"**
+3. Fill in the form:
+   - **Name**: `Coffee Brew Tracker API` (or any name you prefer)
+   - **Identifier**: `https://your-site.netlify.app/api` (must be a valid URL format, but doesn't need to be a real URL)
+   - **Signing Algorithm**: `RS256` (default - keep this)
+4. Click **"Create"**
+5. Copy the **Identifier** value (this will be your `AUTH0_AUDIENCE`)
+
+**Note**: If you skip this step, the app will use the default Auth0 Management API identifier. The custom API is recommended for better security and clearer token scopes.
+
+### Step 6: Configure Auth0 Application to Include Email
+
+1. Go back to **Applications** → **Applications** → Your Application
+2. Scroll down to **"Advanced Settings"** (below the main settings)
+3. Click the **"OAuth"** tab
+4. Under **"OAuth Settings"**, make sure **"Include email in id_token"** is checked (usually enabled by default)
+5. Click **"Save Changes"**
+
+**Why this matters**: The app needs the user's email address from the token to check against the whitelist in Airtable.
+
+### Step 7: Set Environment Variables in Netlify
+
+1. Go to your Netlify site dashboard
+2. Navigate to **Site settings** → **Environment variables**
+3. Click **"Add a variable"** and add the following:
+
+   | Variable Name | Value | Description |
+   |--------------|-------|-------------|
+   | `AUTH0_DOMAIN` | `your-tenant.auth0.com` | Your Auth0 domain from Step 4 (e.g., `dev-abc123.us.auth0.com`) |
+   | `AUTH0_CLIENT_ID` | `your-client-id` | Your Auth0 Client ID from Step 4 (the long alphanumeric string) |
+   | `AUTH0_AUDIENCE` | `https://your-site.netlify.app/api` | Your API identifier from Step 5 (optional, but recommended) |
+
+4. Click **"Save"** after adding each variable
+
+**Note**: 
+- Don't include quotes around the values
+- Make sure there are no extra spaces
+- The `AUTH0_AUDIENCE` is optional - if you didn't create a custom API, you can skip it
+
+### Step 8: Redeploy Your Site
+
+After setting environment variables, you need to redeploy:
+
+1. Go to **Deploys** → **Trigger deploy** → **Deploy site**
+2. Or push a new commit to trigger automatic deployment
+3. Wait for deployment to complete (usually 1-2 minutes)
+
+### Step 9: Test Authentication
+
+1. Visit your deployed site: `https://your-site.netlify.app`
+2. You should see a **"Login"** button in the header
+3. Click **"Login"** - you should be redirected to Auth0's hosted login page
+4. Sign in with:
+   - Your Auth0 account credentials, OR
+   - A social provider (if you enabled them), OR
+   - Create a new account using "Sign Up"
+5. After successful login, you should be redirected back to your site
+6. The brew form should now be visible (if your email is in the Allowed Users table)
+
+### Troubleshooting Auth0
+
+#### Issue: "Auth0 not configured" error message
+**Solution**:
+- Check that `AUTH0_DOMAIN` and `AUTH0_CLIENT_ID` are set in Netlify environment variables
+- Verify the values match exactly what's in your Auth0 dashboard (no extra spaces)
+- Redeploy after setting environment variables
+- Check browser console for detailed error messages
+
+#### Issue: "Invalid redirect URI" error
+**Solution**:
+- Check that your exact site URL is in **Allowed Callback URLs** in Auth0
+- Make sure there are no trailing slashes (`/`)
+- URLs are case-sensitive - verify exact match
+- For local dev, make sure `http://localhost:8888` is also added
+
+#### Issue: CORS errors in browser console
+**Solution**:
+- Verify your site URL is in **Allowed Web Origins** in Auth0
+- Check that **Allowed Origins (CORS)** matches
+- Make sure you clicked "Save Changes" in Auth0
+- Clear browser cache and try again
+
+#### Issue: "Email not found in token" error
+**Solution**:
+- Go to Auth0 Dashboard → Applications → Your App → Advanced Settings → OAuth
+- Ensure **"Include email in id_token"** is enabled
+- Make sure users have email addresses in their Auth0 profiles
+- Try logging out and logging back in
+
+#### Issue: Can login but can't create brews
+**Solution**:
+- Check that your email is in the "Allowed Users" Airtable table
+- Verify the email matches exactly (matching is case-insensitive)
+- Check browser console for 403 Forbidden errors
+- Verify the "Allowed Users" table has an "Email" field
+- Make sure the table name matches (default is "Allowed Users")
+
+#### Issue: Login button doesn't appear
+**Solution**:
+- Check browser console for errors loading Auth0 config
+- Verify the `auth0-config` function is deployed and accessible
+- Test the function directly: `https://your-site.netlify.app/.netlify/functions/auth0-config`
+- Should return JSON with `domain` and `clientId` fields
+
+### Auth0 Free Tier Limits
+
+The Auth0 free tier (Hobby plan) includes:
+- **Up to 7,000 active users** per month
+- **Unlimited logins**
+- **Social identity providers** (Google, Facebook, GitHub, etc.)
+- **Email/password authentication**
+- **Basic user management**
+- **Standard support**
+
+This is more than sufficient for personal use or small teams. If you need more, paid plans start at $35/month.
 
 ### Security
 

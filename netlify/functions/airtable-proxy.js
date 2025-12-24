@@ -98,7 +98,54 @@ exports.handler = async (event, context) => {
                     algorithms: ['RS256']
                 });
                 
-                // Token is valid, continue
+                // Extract email from token
+                const userEmail = decoded.email || decoded['https://your-namespace/email'];
+                if (!userEmail) {
+                    return {
+                        statusCode: 401,
+                        headers: {
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        body: JSON.stringify({ error: 'Unauthorized: Email not found in token' })
+                    };
+                }
+                
+                // Check email whitelist in Airtable
+                const ALLOWED_USERS_TABLE = process.env.ALLOWED_USERS_TABLE || 'Allowed Users';
+                try {
+                    const userEmailLower = userEmail.toLowerCase();
+                    const whitelistUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(ALLOWED_USERS_TABLE)}?filterByFormula=${encodeURIComponent(`{Email} = "${userEmailLower}"`)}`;
+                    
+                    const whitelistResponse = await fetch(whitelistUrl, {
+                        headers: {
+                            'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (!whitelistResponse.ok) {
+                        console.error('Error checking whitelist:', await whitelistResponse.text());
+                        // If table doesn't exist, allow access (fail open for easier setup)
+                        // Remove this if you want strict enforcement
+                    } else {
+                        const whitelistData = await whitelistResponse.json();
+                        if (!whitelistData.records || whitelistData.records.length === 0) {
+                            return {
+                                statusCode: 403,
+                                headers: {
+                                    'Access-Control-Allow-Origin': '*'
+                                },
+                                body: JSON.stringify({ error: 'Forbidden: Your email is not authorized to create brews' })
+                            };
+                        }
+                    }
+                } catch (whitelistError) {
+                    console.error('Error checking email whitelist:', whitelistError);
+                    // Fail open - allow access if whitelist check fails
+                    // Change this to fail closed if you want strict enforcement
+                }
+                
+                // Token is valid and email is whitelisted, continue
             } catch (jwtError) {
                 console.error('JWT verification error:', jwtError);
                 return {
@@ -132,7 +179,8 @@ exports.handler = async (event, context) => {
                     queryParams.push(`filterByFormula=${encodeURIComponent(filter)}`);
                 }
                 if (sort) {
-                    queryParams.push(`sort[0][field]=${encodeURIComponent(sort.field)}&sort[0][direction]=${sort.direction || 'desc'}`);
+                    queryParams.push(`sort[0][field]=${encodeURIComponent(sort.field)}`);
+                    queryParams.push(`sort[0][direction]=${sort.direction || 'desc'}`);
                 }
                 if (queryParams.length > 0) {
                     url += '?' + queryParams.join('&');
