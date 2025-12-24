@@ -490,8 +490,9 @@ async function submitBrew() {
     
     // Add optional fields only if they have values
     const totalBrewTime = formData.get('total-brew-time');
+    console.log('Total Brew Time raw value:', totalBrewTime);
     if (totalBrewTime && totalBrewTime.trim() !== '') {
-        // Convert to h:mm:ss format for Airtable Duration field
+        // Convert to seconds for Airtable Duration field
         // Input can be: "2:30" (m:ss), "5:44" (m:ss), "1:02:30" (h:mm:ss), or just "30" (seconds)
         const timeStr = totalBrewTime.trim();
         let totalSeconds = 0;
@@ -508,13 +509,9 @@ async function submitBrew() {
             totalSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
         }
         
-        // Convert to h:mm:ss format
-        const hours = Math.floor(totalSeconds / 3600);
-        const minutes = Math.floor((totalSeconds % 3600) / 60);
-        const seconds = totalSeconds % 60;
-        const formattedTime = `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        
-        brewData.fields['Total Brew Time'] = formattedTime;
+        console.log('Total Brew Time converted to seconds:', totalSeconds);
+        // Airtable Duration field accepts seconds as a number
+        brewData.fields['Total Brew Time'] = totalSeconds;
     }
     
     const notes = formData.get('taste');
