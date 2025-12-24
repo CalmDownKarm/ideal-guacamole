@@ -163,21 +163,45 @@ This app requires a backend to securely store your Airtable API key. Choose one 
 
 ### Option 1: Netlify (Recommended - Easiest)
 
-#### Initial Setup
+#### Method A: Netlify GitHub Integration (Recommended - Simplest)
 
-1. Go to [netlify.com](https://netlify.com) and sign up (free)
-2. On the dashboard, drag and drop your `coffee-brew-tracker` folder (or connect a GitHub repo)
-3. **Set Environment Variables**:
-   - Go to Site settings → Environment variables
+This is the easiest way to set up automatic deployments. Netlify will automatically deploy whenever you push to GitHub.
+
+1. **Push your code to GitHub**:
+   - Create a new repository on GitHub (if you haven't already)
+   - Push your `coffee-brew-tracker` code to GitHub
+
+2. **Connect to Netlify**:
+   - Go to [netlify.com](https://netlify.com) and sign up/login (free)
+   - Click "Add new site" → "Import an existing project"
+   - Click "Deploy with GitHub"
+   - Authorize Netlify to access your GitHub account
+   - Select your `coffee-brew-tracker` repository
+   - Click "Next"
+
+3. **Configure Build Settings**:
+   - **Branch to deploy**: Select `main` (or `master` if that's your default branch)
+   - **Base directory**: Leave empty (or set to `.` if needed)
+   - **Build command**: Leave empty (this is a static site, no build needed)
+   - **Publish directory**: Leave empty (or set to `.` if needed)
+   - **Functions directory**: Set to `netlify/functions` (this should already be filled in)
+   - Click "Deploy site"
+
+4. **Set Environment Variables**:
+   - After the initial deployment, go to Site settings → Environment variables
+   - Click "Add a variable"
    - Add `AIRTABLE_BASE_ID` = your Airtable base ID (starts with `app...`)
    - Add `AIRTABLE_API_KEY` = your Airtable API key
    - Click "Save"
-4. Your site will be live instantly at a URL like `random-name-123.netlify.app`
-5. Optional: Add a custom domain in Site settings → Domain management
+   - Go to Deploys → Trigger deploy → Deploy site (to redeploy with the new environment variables)
 
-#### Automatic Deployment with GitHub Actions
+5. **Done!** Your site is now live and will automatically redeploy whenever you push to GitHub.
 
-If you want to use GitHub Actions for automatic deployments (instead of Netlify's built-in Git integration):
+**Pros**: Simplest setup, automatic deployments on every push, free HTTPS, custom domains, serverless functions included
+
+#### Method B: GitHub Actions (Alternative)
+
+If you prefer using GitHub Actions instead of Netlify's built-in integration:
 
 1. **Get your Netlify credentials**:
    - Go to [Netlify User Settings](https://app.netlify.com/user/applications) → Applications → New access token
@@ -198,30 +222,13 @@ If you want to use GitHub Actions for automatic deployments (instead of Netlify'
 
 **Note**: If your default branch is `master` instead of `main`, update the branch name in `.github/workflows/deploy-netlify.yml`.
 
-**Pros**: Easiest deployment, free HTTPS, custom domains, serverless functions included, automatic deployments with GitHub Actions
+**Recommendation**: Use Method A (Netlify GitHub Integration) - it's simpler and doesn't require managing GitHub secrets.
 
-### Option 2: Vercel
-
-1. Go to [vercel.com](https://vercel.com) and sign up
-2. Click "Add New Project"
-3. Either:
-   - Drag and drop your folder, OR
-   - Connect a GitHub repository for automatic deployments
-4. **Set Environment Variables**:
-   - Go to Project Settings → Environment Variables
-   - Add `AIRTABLE_BASE_ID` = your Airtable base ID (starts with `app...`)
-   - Add `AIRTABLE_API_KEY` = your Airtable API key
-   - Select "Production", "Preview", and "Development" environments
-   - Click "Save"
-5. Your site will be live at `your-project.vercel.app`
-
-**Pros**: Great performance, automatic deployments with Git, free HTTPS, serverless functions included
-
-### Option 3: GitHub Pages (Not Recommended)
+### Option 2: GitHub Pages (Not Recommended)
 
 ⚠️ **Note**: GitHub Pages only hosts static files and doesn't support serverless functions. You would need to expose your API key in the frontend code, which is not secure.
 
-**Better alternatives**: Use Netlify or Vercel (both free) which support serverless functions.
+**Better alternative**: Use Netlify (free) which supports serverless functions.
 
 ### Option 3: Cloudflare Pages (Advanced)
 
@@ -235,18 +242,18 @@ Cloudflare Pages supports serverless functions (Workers), but requires additiona
    - Add `AIRTABLE_BASE_ID` and `AIRTABLE_API_KEY`
 5. You'll need to adapt the serverless function for Cloudflare Workers format
 
-**Note**: The included functions are for Netlify/Vercel. Cloudflare requires different syntax.
+**Note**: The included functions are for Netlify. Cloudflare requires different syntax.
 
 **Pros**: Fast CDN, free, great performance
 
-**Recommendation**: Use Netlify or Vercel for easier setup.
+**Recommendation**: Use Netlify for easier setup.
 
 ### Security
 
 ✅ **This app uses a backend proxy** - your API key is stored securely as an environment variable on the server side and never exposed to the browser.
 
 **How it works**:
-- Your frontend calls your serverless function (Netlify/Vercel)
+- Your frontend calls your Netlify serverless function
 - The serverless function has access to environment variables (your API key)
 - The serverless function makes authenticated requests to Airtable
 - Your API key never appears in the browser or client-side code

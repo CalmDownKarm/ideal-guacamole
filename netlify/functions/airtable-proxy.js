@@ -38,7 +38,7 @@ exports.handler = async (event, context) => {
     }
 
     try {
-        const { action, table, data, recordId, sort } = JSON.parse(event.body);
+        const { action, table, data, recordId, sort, filter } = JSON.parse(event.body);
 
         let url;
         let options = {
@@ -56,8 +56,15 @@ exports.handler = async (event, context) => {
             case 'list':
                 // List records
                 url = baseUrl;
+                const queryParams = [];
+                if (filter) {
+                    queryParams.push(`filterByFormula=${encodeURIComponent(filter)}`);
+                }
                 if (sort) {
-                    url += `?sort[0][field]=${encodeURIComponent(sort.field)}&sort[0][direction]=${sort.direction || 'desc'}`;
+                    queryParams.push(`sort[0][field]=${encodeURIComponent(sort.field)}&sort[0][direction]=${sort.direction || 'desc'}`);
+                }
+                if (queryParams.length > 0) {
+                    url += '?' + queryParams.join('&');
                 }
                 options.method = 'GET';
                 break;

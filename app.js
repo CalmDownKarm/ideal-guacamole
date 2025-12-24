@@ -5,19 +5,14 @@ const CONFIG = {
     brewTable: 'Coffee Brews' // Name of your brews table
 };
 
-// Backend proxy endpoint (automatically detects Netlify or Vercel)
-// For Netlify: uses /.netlify/functions/airtable-proxy
-// For Vercel: uses /api/airtable-proxy
-// For local dev: you can set this manually or use environment detection
+// Backend proxy endpoint for Netlify
+// Uses /.netlify/functions/airtable-proxy
 const getProxyUrl = () => {
-    // Auto-detect based on current URL
+    // Auto-detect Netlify or default to Netlify format for local development
     if (window.location.hostname.includes('netlify.app') || window.location.hostname.includes('netlify.com')) {
         return '/.netlify/functions/airtable-proxy';
-    } else if (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('vercel.com')) {
-        return '/api/airtable-proxy';
     } else {
-        // For local development, default to Netlify format
-        // Change this to '/api/airtable-proxy' if using Vercel locally
+        // For local development with Netlify Dev
         return '/.netlify/functions/airtable-proxy';
     }
 };
@@ -26,7 +21,7 @@ const PROXY_URL = getProxyUrl();
 
 // Helper function to call backend proxy
 async function callAirtableProxy(action, table, options = {}) {
-    const { data, recordId, sort } = options;
+    const { data, recordId, sort, filter } = options;
     
     const response = await fetch(PROXY_URL, {
         method: 'POST',
@@ -38,7 +33,8 @@ async function callAirtableProxy(action, table, options = {}) {
             table,
             data,
             recordId,
-            sort
+            sort,
+            filter
         })
     });
 
@@ -99,6 +95,16 @@ function initializeForm() {
         e.preventDefault();
         await submitBrew();
     });
+
+    // Auto-set Dose to 18g when Brewer is Espresso
+    const brewerSelect = document.getElementById('brewer');
+    const doseInput = document.getElementById('dose');
+    
+    brewerSelect.addEventListener('change', (e) => {
+        if (e.target.value === 'Espresso') {
+            doseInput.value = '18';
+        }
+    });
 }
 
 // Load coffees from Airtable via backend proxy
@@ -106,7 +112,9 @@ async function loadCoffees() {
     const coffeeSelect = document.getElementById('coffee');
     
     try {
-        const data = await callAirtableProxy('list', CONFIG.coffeeTable);
+        const data = await callAirtableProxy('list', CONFIG.coffeeTable, {
+            filter: '{Opened}'
+        });
         
         // Clear loading message
         coffeeSelect.innerHTML = '<option value="">Select a coffee</option>';
@@ -145,7 +153,6 @@ async function submitBrew() {
         fields: {
             'Coffee': [formData.get('coffee')], // Link to coffee record
             'Brew Date': dateTime,
-            'Brew Method': formData.get('method'),
             'Grinder Used': formData.get('grinder'),
             'Grind Size': formData.get('grind-size'),
             'Brewer': formData.get('brewer'),
