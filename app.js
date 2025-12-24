@@ -745,11 +745,14 @@ async function createBrewCard(record) {
     const method = fields['Brew Method'] || '';
     const methodClass = method.toLowerCase();
     
+    // Get user who created the brew
+    const createdBy = fields['User'] || '';
+    
     card.innerHTML = `
         <div class="brew-card-header">
             <div>
                 <div class="brew-coffee">${coffeeName}</div>
-                <div class="brew-date">${date}</div>
+                <div class="brew-date">${date}${createdBy ? ` • ${createdBy}` : ''}</div>
             </div>
             ${method ? `<span class="brew-method ${methodClass}">${method}</span>` : ''}
         </div>
