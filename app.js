@@ -59,16 +59,25 @@ async function callAirtableProxy(action, table, options = {}) {
     // Include Auth0 access token for create actions
     const authToken = action === 'create' ? getAuthToken() : null;
     
-    if (action === 'create' && !authToken) {
-        console.warn('No auth token available for create action');
+    if (action === 'create') {
+        if (!authToken) {
+            console.error('No auth token available for create action');
+        } else {
+            console.log('Sending auth token (length:', authToken.length, ')');
+        }
+    }
+    
+    const headers = {
+        'Content-Type': 'application/json'
+    };
+    
+    if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
     }
     
     const response = await fetch(PROXY_URL, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            ...(authToken && { 'Authorization': `Bearer ${authToken}` })
-        },
+        headers: headers,
         body: JSON.stringify({
             action,
             table,

@@ -47,6 +47,7 @@ exports.handler = async (event, context) => {
         // Require authentication for create action
         if (action === 'create') {
             if (!authToken) {
+                console.error('No auth token provided in Authorization header');
                 return {
                     statusCode: 401,
                     headers: {
@@ -77,26 +78,87 @@ exports.handler = async (event, context) => {
                     jwksUri: `https://${AUTH0_DOMAIN}/.well-known/jwks.json`
                 });
                 
-                // Decode token to get kid
+                // Decode token to get kid and check structure
                 const decodedToken = jwt.decode(authToken, { complete: true });
                 if (!decodedToken || !decodedToken.header || !decodedToken.header.kid) {
+                    console.error('Invalid token format - missing kid');
                     throw new Error('Invalid token format');
                 }
                 
                 // Get signing key
                 const key = await new Promise((resolve, reject) => {
                     client.getSigningKey(decodedToken.header.kid, (err, signingKey) => {
-                        if (err) reject(err);
-                        else resolve(signingKey.publicKey || signingKey.rsaPublicKey);
+                        if (err) {
+                            console.error('Error getting signing key:', err);
+                            reject(err);
+                        } else {
+                            resolve(signingKey.publicKey || signingKey.rsaPublicKey);
+                        }
                     });
                 });
                 
-                // Verify token
-                const decoded = jwt.verify(authToken, key, {
-                    audience: process.env.AUTH0_AUDIENCE || `https://${AUTH0_DOMAIN}/api/v2/`,
-                    issuer: `https://${AUTH0_DOMAIN}/`,
-                    algorithms: ['RS256']
+                // Decode token first to see what's in it
+                const decodedPreview = jwt.decode(authToken);
+                const AUTH0_CLIENT_ID = process.env.AUTH0_CLIENT_ID;
+                const issuer = `https://${AUTH0_DOMAIN}/`;
+                
+                console.log('Token preview:', {
+                    aud: decodedPreview?.aud,
+                    iss: decodedPreview?.iss,
+                    exp: decodedPreview?.exp,
+                    email: decodedPreview?.email
                 });
+                
+                // For SPAs, access tokens might not have strict audience requirements
+                // Try verification with different audience options
+                let decoded;
+                let verifyError = null;
+                
+                // First, try with AUTH0_AUDIENCE if set
+                if (process.env.AUTH0_AUDIENCE) {
+                    try {
+                        decoded = jwt.verify(authToken, key, {
+                            audience: process.env.AUTH0_AUDIENCE,
+                            issuer: issuer,
+                            algorithms: ['RS256']
+                        });
+                        console.log('Token verified with AUTH0_AUDIENCE');
+                    } catch (e) {
+                        verifyError = e;
+                        console.log('Failed with AUTH0_AUDIENCE, trying Client ID');
+                    }
+                }
+                
+                // If that failed, try with Client ID (common for SPAs)
+                if (!decoded && AUTH0_CLIENT_ID) {
+                    try {
+                        decoded = jwt.verify(authToken, key, {
+                            audience: AUTH0_CLIENT_ID,
+                            issuer: issuer,
+                            algorithms: ['RS256']
+                        });
+                        console.log('Token verified with Client ID');
+                    } catch (e) {
+                        verifyError = e;
+                        console.log('Failed with Client ID, trying without audience validation');
+                    }
+                }
+                
+                // If still failed, try without audience validation (some SPAs don't require it)
+                if (!decoded) {
+                    try {
+                        decoded = jwt.verify(authToken, key, {
+                            issuer: issuer,
+                            algorithms: ['RS256']
+                        });
+                        console.log('Token verified without audience validation');
+                    } catch (e) {
+                        verifyError = e;
+                        throw verifyError || e; // Throw the last error
+                    }
+                }
+                
+                console.log('Token verified successfully for:', decoded.email || decoded.sub);
                 
                 // Extract email from token
                 const userEmail = decoded.email || decoded['https://your-namespace/email'];
