@@ -27,7 +27,7 @@
         <header>
             <h1>☕ Coffee Brew Tracker</h1>
             <div id="auth-buttons" style="margin-top: 12px;">
-                <button id="login-button" class="auth-button" style="display: none;">Login</button>
+                <button id="login-button" class="auth-button" style="display: inline-block;">Login</button>
                 <button id="logout-button" class="auth-button" style="display: none;">Logout</button>
             </div>
         </header>
@@ -41,12 +41,12 @@
             <!-- Form Tab -->
             <div id="form-tab" class="tab-content active">
                 <!-- Auth Required Message -->
-                <div id="auth-required-message" class="message" style="display: none; margin-bottom: 20px;">
+                <div id="auth-required-message" class="message" style="display: block; margin-bottom: 20px;">
                     Please login to create new brews. Viewing brews is available to everyone.
                 </div>
 
                 <!-- Brew Form -->
-                <form id="brew-form" class="brew-form">
+                <form id="brew-form" class="brew-form" style="display: none;">
                     <div class="form-group">
                         <label for="coffee">Coffee from Stash *</label>
                         <select id="coffee" name="coffee" required>

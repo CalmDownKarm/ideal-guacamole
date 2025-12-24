@@ -19,7 +19,12 @@ function initializeAuth0() {
     const domain = window.AUTH0_DOMAIN;
     const clientId = window.AUTH0_CLIENT_ID;
     
-    if (domain && clientId) {
+    if (!domain || !clientId) {
+        console.warn('Auth0 not configured - domain or client ID missing');
+        return;
+    }
+    
+    try {
         auth0Client = new window.auth0.WebAuth({
             domain: domain,
             clientID: clientId,
@@ -27,6 +32,9 @@ function initializeAuth0() {
             responseType: 'token id_token',
             scope: 'openid profile'
         });
+        console.log('Auth0 initialized successfully');
+    } catch (error) {
+        console.error('Failed to initialize Auth0:', error);
     }
 }
 
@@ -86,11 +94,24 @@ function getAuthToken() {
 }
 
 function parseHash() {
-    if (!auth0Client) return;
+    if (!auth0Client) {
+        // If Auth0 client not initialized, check if we have tokens in URL hash anyway
+        const hash = window.location.hash;
+        if (hash && hash.includes('access_token')) {
+            // Auth0 client not ready, but we have tokens - wait a bit and try again
+            setTimeout(() => {
+                if (auth0Client) {
+                    parseHash();
+                }
+            }, 100);
+        }
+        return;
+    }
     
     auth0Client.parseHash((err, authResult) => {
         if (err) {
             console.error('Error parsing hash:', err);
+            updateAuthUI();
             return;
         }
         
@@ -98,6 +119,9 @@ function parseHash() {
             accessToken = authResult.accessToken;
             idToken = authResult.idToken;
             window.location.hash = '';
+            updateAuthUI();
+        } else {
+            // No tokens in hash, update UI to show login
             updateAuthUI();
         }
     });
@@ -137,22 +161,46 @@ function updateAuthUI() {
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
+    // Set initial UI state (form hidden, login button visible)
+    updateAuthUI();
+    
     // Wait for Auth0 config to load (if not already loaded from HTML script)
     if (!window.AUTH0_DOMAIN || !window.AUTH0_CLIENT_ID) {
         try {
             const response = await fetch('/.netlify/functions/auth0-config');
+            if (!response.ok) {
+                throw new Error(`Config endpoint returned ${response.status}`);
+            }
             const config = await response.json();
             window.AUTH0_DOMAIN = config.domain || '';
             window.AUTH0_CLIENT_ID = config.clientId || '';
+            
+            if (!window.AUTH0_DOMAIN || !window.AUTH0_CLIENT_ID) {
+                throw new Error('Auth0 config missing domain or client ID');
+            }
         } catch (error) {
             console.error('Failed to load Auth0 config:', error);
+            // Show error message if config fails
+            const authRequiredMessage = document.getElementById('auth-required-message');
+            if (authRequiredMessage) {
+                authRequiredMessage.textContent = 'Auth0 not configured. Please set AUTH0_DOMAIN and AUTH0_CLIENT_ID environment variables in Netlify.';
+                authRequiredMessage.className = 'message error';
+            }
+            // Still update UI to show login button (even if it won't work)
+            updateAuthUI();
+            return; // Don't continue initialization if Auth0 isn't configured
         }
     }
     
     // Initialize Auth0 now that config is available
     initializeAuth0();
     
-    parseHash(); // Check for Auth0 callback
+    // Check for Auth0 callback (this will set accessToken if returning from login)
+    parseHash();
+    
+    // Update UI again after parsing hash (in case we just logged in)
+    updateAuthUI();
+    
     initializeTabs();
     initializeForm();
     initializeAuth();
