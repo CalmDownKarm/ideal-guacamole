@@ -8,7 +8,7 @@ exports.handler = async (event, context) => {
             statusCode: 200,
             headers: {
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
                 'Access-Control-Allow-Methods': 'POST, OPTIONS'
             },
             body: ''
@@ -38,7 +38,78 @@ exports.handler = async (event, context) => {
     }
 
     try {
+        // Get Auth0 token from Authorization header
+        const authHeader = event.headers.authorization || event.headers.Authorization;
+        const authToken = authHeader ? authHeader.replace('Bearer ', '') : null;
+        
         const { action, table, data, recordId, sort, filter } = JSON.parse(event.body);
+        
+        // Require authentication for create action
+        if (action === 'create') {
+            if (!authToken) {
+                return {
+                    statusCode: 401,
+                    headers: {
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    body: JSON.stringify({ error: 'Unauthorized: No authentication token provided' })
+                };
+            }
+            
+            // Verify Auth0 token
+            const AUTH0_DOMAIN = process.env.AUTH0_DOMAIN;
+            if (!AUTH0_DOMAIN) {
+                return {
+                    statusCode: 500,
+                    headers: {
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    body: JSON.stringify({ error: 'Server configuration error: AUTH0_DOMAIN not set' })
+                };
+            }
+            
+            // Verify JWT token with Auth0
+            try {
+                const jwt = require('jsonwebtoken');
+                const jwksClient = require('jwks-rsa');
+                
+                const client = jwksClient({
+                    jwksUri: `https://${AUTH0_DOMAIN}/.well-known/jwks.json`
+                });
+                
+                // Decode token to get kid
+                const decodedToken = jwt.decode(authToken, { complete: true });
+                if (!decodedToken || !decodedToken.header || !decodedToken.header.kid) {
+                    throw new Error('Invalid token format');
+                }
+                
+                // Get signing key
+                const key = await new Promise((resolve, reject) => {
+                    client.getSigningKey(decodedToken.header.kid, (err, signingKey) => {
+                        if (err) reject(err);
+                        else resolve(signingKey.publicKey || signingKey.rsaPublicKey);
+                    });
+                });
+                
+                // Verify token
+                const decoded = jwt.verify(authToken, key, {
+                    audience: process.env.AUTH0_AUDIENCE || `https://${AUTH0_DOMAIN}/api/v2/`,
+                    issuer: `https://${AUTH0_DOMAIN}/`,
+                    algorithms: ['RS256']
+                });
+                
+                // Token is valid, continue
+            } catch (jwtError) {
+                console.error('JWT verification error:', jwtError);
+                return {
+                    statusCode: 401,
+                    headers: {
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    body: JSON.stringify({ error: 'Unauthorized: Invalid or expired token' })
+                };
+            }
+        }
 
         let url;
         let options = {

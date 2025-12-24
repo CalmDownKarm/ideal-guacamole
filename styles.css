@@ -123,6 +123,51 @@ header h1 {
     min-height: 80px;
 }
 
+.login-section {
+    background: var(--card-background);
+    border-radius: 12px;
+    padding: 32px;
+    box-shadow: var(--shadow);
+    margin-bottom: 20px;
+}
+
+.login-form {
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.login-form h2 {
+    font-size: 24px;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+}
+
+.login-form p {
+    color: var(--text-secondary);
+    margin-bottom: 24px;
+    font-size: 14px;
+}
+
+.auth-button {
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid white;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+    font-weight: 500;
+}
+
+.auth-button:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.auth-button:active {
+    background: rgba(255, 255, 255, 0.4);
+}
+
 .form-row {
     display: grid;
     grid-template-columns: 1fr 1fr;

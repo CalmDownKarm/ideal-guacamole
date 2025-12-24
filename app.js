@@ -2,8 +2,33 @@
 // Only table names need to be configured here - API key is stored securely on the backend
 const CONFIG = {
     coffeeTable: 'Coffee Freezer', // Name of your coffee stash table
-    brewTable: 'Coffee Brews' // Name of your brews table
+    brewTable: 'Coffee Brews', // Name of your brews table
+    // Auth0 config is loaded from serverless function (see initializeAuth0)
 };
+
+// Initialize Auth0 (will be initialized after config loads)
+let auth0Client = null;
+
+function initializeAuth0() {
+    // Wait for Auth0 SDK and config to be available
+    if (!window.auth0) {
+        console.warn('Auth0 SDK not loaded');
+        return;
+    }
+    
+    const domain = window.AUTH0_DOMAIN;
+    const clientId = window.AUTH0_CLIENT_ID;
+    
+    if (domain && clientId) {
+        auth0Client = new window.auth0.WebAuth({
+            domain: domain,
+            clientID: clientId,
+            redirectUri: window.location.origin,
+            responseType: 'token id_token',
+            scope: 'openid profile'
+        });
+    }
+}
 
 // Backend proxy endpoint for Netlify
 // Uses /.netlify/functions/airtable-proxy
@@ -23,10 +48,14 @@ const PROXY_URL = getProxyUrl();
 async function callAirtableProxy(action, table, options = {}) {
     const { data, recordId, sort, filter } = options;
     
+    // Include Auth0 access token for create actions
+    const authToken = action === 'create' ? getAuthToken() : null;
+    
     const response = await fetch(PROXY_URL, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            ...(authToken && { 'Authorization': `Bearer ${authToken}` })
         },
         body: JSON.stringify({
             action,
@@ -40,19 +69,111 @@ async function callAirtableProxy(action, table, options = {}) {
 
     if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || `Request failed: ${response.statusText}`);
+        const error = new Error(errorData.error || `Request failed: ${response.statusText}`);
+        error.status = response.status;
+        throw error;
     }
 
     return await response.json();
 }
 
+// Auth0 Authentication
+let accessToken = null;
+let idToken = null;
+
+function getAuthToken() {
+    return accessToken;
+}
+
+function parseHash() {
+    if (!auth0Client) return;
+    
+    auth0Client.parseHash((err, authResult) => {
+        if (err) {
+            console.error('Error parsing hash:', err);
+            return;
+        }
+        
+        if (authResult && authResult.accessToken && authResult.idToken) {
+            accessToken = authResult.accessToken;
+            idToken = authResult.idToken;
+            window.location.hash = '';
+            updateAuthUI();
+        }
+    });
+}
+
+function login() {
+    if (!auth0Client) {
+        alert('Auth0 not configured. Please set AUTH0_DOMAIN and AUTH0_CLIENT_ID.');
+        return;
+    }
+    auth0Client.authorize();
+}
+
+function logout() {
+    accessToken = null;
+    idToken = null;
+    updateAuthUI();
+    if (auth0Client) {
+        auth0Client.logout({
+            returnTo: window.location.origin
+        });
+    }
+}
+
+function updateAuthUI() {
+    const isAuthenticated = !!accessToken;
+    const loginButton = document.getElementById('login-button');
+    const logoutButton = document.getElementById('logout-button');
+    const brewForm = document.getElementById('brew-form');
+    const authRequiredMessage = document.getElementById('auth-required-message');
+    
+    if (loginButton) loginButton.style.display = isAuthenticated ? 'none' : 'inline-block';
+    if (logoutButton) logoutButton.style.display = isAuthenticated ? 'inline-block' : 'none';
+    if (brewForm) brewForm.style.display = isAuthenticated ? 'block' : 'none';
+    if (authRequiredMessage) authRequiredMessage.style.display = isAuthenticated ? 'none' : 'block';
+}
+
 // Initialize app
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // Wait for Auth0 config to load (if not already loaded from HTML script)
+    if (!window.AUTH0_DOMAIN || !window.AUTH0_CLIENT_ID) {
+        try {
+            const response = await fetch('/.netlify/functions/auth0-config');
+            const config = await response.json();
+            window.AUTH0_DOMAIN = config.domain || '';
+            window.AUTH0_CLIENT_ID = config.clientId || '';
+        } catch (error) {
+            console.error('Failed to load Auth0 config:', error);
+        }
+    }
+    
+    // Initialize Auth0 now that config is available
+    initializeAuth0();
+    
+    parseHash(); // Check for Auth0 callback
     initializeTabs();
     initializeForm();
+    initializeAuth();
     loadCoffees();
     loadBrews();
 });
+
+function initializeAuth() {
+    updateAuthUI();
+    
+    // Login/Logout button handlers
+    const loginButton = document.getElementById('login-button');
+    const logoutButton = document.getElementById('logout-button');
+    
+    if (loginButton) {
+        loginButton.addEventListener('click', login);
+    }
+    if (logoutButton) {
+        logoutButton.addEventListener('click', logout);
+    }
+}
 
 // Tab switching
 function initializeTabs() {
@@ -188,7 +309,16 @@ async function submitBrew() {
         
     } catch (error) {
         console.error('Error saving brew:', error);
-        showMessage(`Error saving brew: ${error.message}`, 'error');
+        
+        // Handle authentication errors
+        if (error.status === 401 || error.message.includes('Unauthorized')) {
+            accessToken = null;
+            idToken = null;
+            updateAuthUI();
+            showMessage('Session expired. Please login again.', 'error');
+        } else {
+            showMessage(`Error saving brew: ${error.message}`, 'error');
+        }
     } finally {
         submitButton.disabled = false;
         submitButton.textContent = 'Save Brew';

@@ -6,11 +6,30 @@
     <meta name="description" content="Coffee Brew Tracker - Track your coffee brews">
     <title>Coffee Brew Tracker</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.auth0.com/js/auth0/9.24/auth0.min.js"></script>
+    <!-- Auth0 Configuration loaded from server -->
+    <script>
+        // Load Auth0 config from serverless function
+        (async function() {
+            try {
+                const response = await fetch('/.netlify/functions/auth0-config');
+                const config = await response.json();
+                window.AUTH0_DOMAIN = config.domain || '';
+                window.AUTH0_CLIENT_ID = config.clientId || '';
+            } catch (error) {
+                console.error('Failed to load Auth0 config:', error);
+            }
+        })();
+    </script>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>☕ Coffee Brew Tracker</h1>
+            <div id="auth-buttons" style="margin-top: 12px;">
+                <button id="login-button" class="auth-button" style="display: none;">Login</button>
+                <button id="logout-button" class="auth-button" style="display: none;">Logout</button>
+            </div>
         </header>
 
         <main>
@@ -21,6 +40,12 @@
 
             <!-- Form Tab -->
             <div id="form-tab" class="tab-content active">
+                <!-- Auth Required Message -->
+                <div id="auth-required-message" class="message" style="display: none; margin-bottom: 20px;">
+                    Please login to create new brews. Viewing brews is available to everyone.
+                </div>
+
+                <!-- Brew Form -->
                 <form id="brew-form" class="brew-form">
                     <div class="form-group">
                         <label for="coffee">Coffee from Stash *</label>

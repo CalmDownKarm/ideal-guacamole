@@ -192,8 +192,20 @@ This is the easiest way to set up automatic deployments. Netlify will automatica
    - Click "Add a variable"
    - Add `AIRTABLE_BASE_ID` = your Airtable base ID (starts with `app...`)
    - Add `AIRTABLE_API_KEY` = your Airtable API key
+   - Add `AUTH0_DOMAIN` = your Auth0 domain (e.g., `your-tenant.auth0.com`)
+   - Add `AUTH0_CLIENT_ID` = your Auth0 application client ID
+   - Add `AUTH0_AUDIENCE` = your Auth0 API identifier (optional, defaults to Auth0 Management API)
    - Click "Save"
    - Go to Deploys → Trigger deploy → Deploy site (to redeploy with the new environment variables)
+
+5. **Configure Auth0**:
+   - Sign up for a free Auth0 account at [auth0.com](https://auth0.com)
+   - Create a new Application (Single Page Application)
+   - Copy your **Domain** and **Client ID**
+   - Set **Allowed Callback URLs** to: `https://your-site.netlify.app`
+   - Set **Allowed Logout URLs** to: `https://your-site.netlify.app`
+   - Set **Allowed Web Origins** to: `https://your-site.netlify.app`
+   - **Note**: Auth0 credentials are automatically loaded from Netlify environment variables via a serverless function - no need to hardcode them in HTML
 
 5. **Done!** Your site is now live and will automatically redeploy whenever you push to GitHub.
 
@@ -248,9 +260,28 @@ Cloudflare Pages supports serverless functions (Workers), but requires additiona
 
 **Recommendation**: Use Netlify for easier setup.
 
+### Authentication
+
+🔐 **This app uses Auth0 for authentication** - only authenticated users can create new brews, but anyone can view existing brews.
+
+**How it works**:
+- Users must login with Auth0 to create new brews
+- Viewing brews is public (no authentication required)
+- Auth0 handles all authentication securely
+- JWT tokens are verified on the backend before allowing brew creation
+
+**Setup**:
+1. Create a free Auth0 account
+2. Create a Single Page Application in Auth0
+3. Configure callback URLs and web origins
+4. Add your Auth0 domain and client ID to `index.html` or via environment variables
+5. Set `AUTH0_DOMAIN` environment variable in Netlify
+
 ### Security
 
 ✅ **This app uses a backend proxy** - your API key is stored securely as an environment variable on the server side and never exposed to the browser.
+
+✅ **Auth0 authentication** - JWT tokens are verified on the backend using Auth0's public keys.
 
 **How it works**:
 - Your frontend calls your Netlify serverless function
