@@ -474,7 +474,7 @@ async function submitBrew() {
         return;
     }
     
-    // Prepare brew data
+    // Prepare brew data - only include fields with values
     const brewData = {
         fields: {
             'Coffee': [coffeeId], // Link to coffee record
@@ -482,15 +482,46 @@ async function submitBrew() {
             'Grinder Used': grinder,
             'Grind Size': parseFloat(grindSize),
             'Brewer': brewer,
-            'Total Brew Time': formData.get('total-brew-time') || '',
             'Dose': parseFloat(dose),
             'Drink Weight': parseFloat(drinkWeight),
-            'Enjoyment Rating': parseInt(formData.get('enjoyment')),
-            'Notes & Tasting': formData.get('taste') || ''
+            'Enjoyment Rating': parseInt(formData.get('enjoyment'))
         }
     };
     
-    // Add optional fields
+    // Add optional fields only if they have values
+    const totalBrewTime = formData.get('total-brew-time');
+    if (totalBrewTime && totalBrewTime.trim() !== '') {
+        // Convert to h:mm:ss format for Airtable Duration field
+        // Input can be: "2:30" (m:ss), "5:44" (m:ss), "1:02:30" (h:mm:ss), or just "30" (seconds)
+        const timeStr = totalBrewTime.trim();
+        let totalSeconds = 0;
+        
+        const parts = timeStr.split(':').map(p => parseInt(p, 10) || 0);
+        if (parts.length === 1) {
+            // Just seconds: "30" -> 30 seconds
+            totalSeconds = parts[0];
+        } else if (parts.length === 2) {
+            // m:ss format: "2:30" -> 2 min 30 sec
+            totalSeconds = parts[0] * 60 + parts[1];
+        } else if (parts.length === 3) {
+            // h:mm:ss format: "1:02:30" -> 1 hour 2 min 30 sec
+            totalSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+        }
+        
+        // Convert to h:mm:ss format
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const formattedTime = `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        
+        brewData.fields['Total Brew Time'] = formattedTime;
+    }
+    
+    const notes = formData.get('taste');
+    if (notes && notes.trim() !== '') {
+        brewData.fields['Notes & Tasting'] = notes.trim();
+    }
+    
     if (numberOfPours) {
         brewData.fields['Number of Pours'] = parseInt(numberOfPours);
     }
