@@ -405,9 +405,9 @@ async function submitBrew() {
     submitButton.disabled = true;
     submitButton.textContent = 'Saving...';
     
-    // Get current date/time
+    // Get current date in YYYY-MM-DD format (Airtable Date field format)
     const now = new Date();
-    const dateTime = now.toISOString();
+    const dateTime = now.toISOString().split('T')[0]; // "2024-12-24"
     
     // Get brewer to determine defaults
     const brewer = formData.get('brewer') || '';
