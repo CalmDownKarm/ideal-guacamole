@@ -109,6 +109,7 @@ async function callAirtableProxy(action, table, options = {}) {
 let accessToken = null;
 let idToken = null;
 let userEmail = null; // Store logged-in user's email
+let userName = null; // Store logged-in user's display name
 
 function getAuthToken() {
     // For Auth0 SPAs, use ID token (always JWT) instead of access token (might be opaque)
@@ -162,14 +163,18 @@ function parseHash() {
                     const payload = JSON.parse(atob(base64));
                     console.log('ID Token payload:', {
                         email: payload.email,
+                        name: payload.name,
+                        nickname: payload.nickname,
                         sub: payload.sub,
                         aud: payload.aud,
                         iss: payload.iss,
                         exp: payload.exp,
                         expDate: new Date(payload.exp * 1000).toISOString()
                     });
-                    // Store user email for later use
+                    // Store user email and name for later use
                     userEmail = payload.email;
+                    // Use name from token, fall back to nickname, then email prefix
+                    userName = payload.name || payload.nickname || (payload.email ? payload.email.split('@')[0] : '');
                 }
             } catch (e) {
                 console.error('Error decoding ID token:', e);
@@ -695,9 +700,12 @@ async function submitBrew() {
     // Set the appropriate linked field
     brewData.fields[linkedFieldName] = [linkedRecordId];
     
-    // Add user email (CreatedBy field)
+    // Add user info (CreatedBy fields)
     if (userEmail) {
         brewData.fields['User'] = userEmail;
+    }
+    if (userName) {
+        brewData.fields['User Name'] = userName;
     }
     
     // Auto-set Brew Method based on brewer
@@ -941,9 +949,18 @@ function populateFilters(brews) {
     const varietals = [...new Set(brews.map(b => b.varietal).filter(Boolean))].sort();
     const brewers = [...new Set(brews.map(b => b.fields.Brewer).filter(Boolean))].sort();
     const users = [...new Set(brews.map(b => {
+        // Prefer User Name, fall back to email prefix
+        const userNameField = b.fields['User Name'];
+        if (userNameField) return userNameField;
+        
         const userField = b.fields['User'];
-        if (typeof userField === 'string') return userField;
-        if (typeof userField === 'object' && userField) return userField.email || userField.name || '';
+        if (typeof userField === 'string') {
+            return userField.includes('@') ? userField.split('@')[0] : userField;
+        }
+        if (typeof userField === 'object' && userField) {
+            const email = userField.email || userField.name || '';
+            return email.includes('@') ? email.split('@')[0] : email;
+        }
         return '';
     }).filter(Boolean))].sort();
     
@@ -994,12 +1011,23 @@ async function displayFilteredBrews() {
         // Brewer filter
         if (brewerFilter && brew.fields.Brewer !== brewerFilter) return false;
         
-        // User filter
+        // User filter - match against name or email prefix
         if (userFilter) {
-            const userField = brew.fields['User'];
+            const userNameField = brew.fields['User Name'];
             let userValue = '';
-            if (typeof userField === 'string') userValue = userField;
-            else if (typeof userField === 'object' && userField) userValue = userField.email || userField.name || '';
+            
+            if (userNameField) {
+                userValue = userNameField;
+            } else {
+                const userField = brew.fields['User'];
+                if (typeof userField === 'string') {
+                    userValue = userField.includes('@') ? userField.split('@')[0] : userField;
+                } else if (typeof userField === 'object' && userField) {
+                    const email = userField.email || userField.name || '';
+                    userValue = email.includes('@') ? email.split('@')[0] : email;
+                }
+            }
+            
             if (userValue !== userFilter) return false;
         }
         
@@ -1119,14 +1147,21 @@ async function createBrewCardFromEnriched(record) {
     const method = fields['Brew Method'] || '';
     const methodClass = method.toLowerCase();
     
-    // Get user who created the brew
+    // Get user who created the brew - prefer name over email
     let createdBy = '';
+    const userNameField = fields['User Name'];
     const userField = fields['User'];
-    if (userField) {
+    
+    if (userNameField) {
+        // Use display name if available
+        createdBy = userNameField;
+    } else if (userField) {
+        // Fall back to email, but show just the prefix (before @)
         if (typeof userField === 'string') {
-            createdBy = userField;
+            createdBy = userField.includes('@') ? userField.split('@')[0] : userField;
         } else if (typeof userField === 'object') {
-            createdBy = userField.email || userField.name || userField.id || '';
+            const email = userField.email || userField.name || userField.id || '';
+            createdBy = email.includes('@') ? email.split('@')[0] : email;
         }
     }
     
