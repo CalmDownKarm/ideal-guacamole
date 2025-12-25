@@ -442,6 +442,9 @@ let userConfig = {
     apiKey: ''
 };
 
+// Cache of loaded coffees (id -> full record)
+let coffeeCache = {};
+
 // Fetch user's Airtable config (if logged in)
 async function fetchUserConfig() {
     const authToken = getAuthToken();
@@ -505,17 +508,23 @@ async function loadCoffees() {
         
         const data = await response.json();
         
-        // Clear loading message
+        // Clear loading message and cache
         coffeeSelect.innerHTML = '<option value="">Select a coffee</option>';
+        coffeeCache = {};
         
-        // Populate dropdown
+        // Populate dropdown and cache coffee details
         data.records.forEach(record => {
+            // Cache the full record for later use
+            coffeeCache[record.id] = record.fields;
+            
             const option = document.createElement('option');
             option.value = record.id;
             // Use Name/Producer field from Coffee Freezer table
             option.textContent = record.fields['Name/Producer'] || `Coffee ${record.id}`;
             coffeeSelect.appendChild(option);
         });
+        
+        console.log('Cached', Object.keys(coffeeCache).length, 'coffees');
         
         // Show indicator if using Community Stash
         if (!userConfig.hasPersonalBase) {
@@ -604,56 +613,23 @@ async function submitBrew() {
         return;
     }
     
-    // Get coffee name from dropdown
-    const coffeeSelect = document.getElementById('coffee');
-    const coffeeName = coffeeSelect.options[coffeeSelect.selectedIndex]?.text || 'Unknown Coffee';
+    // Get coffee details from cache
+    const coffeeDetails = coffeeCache[coffeeId] || {};
+    const coffeeName = coffeeDetails['Name/Producer'] || 'Unknown Coffee';
     
-    // If user has personal base, copy coffee to Community Stash first
-    if (userConfig.hasPersonalBase) {
-        try {
-            submitButton.textContent = 'Syncing coffee...';
-            
-            const copyResponse = await fetch(PROXY_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${getAuthToken()}`
-                },
-                body: JSON.stringify({
-                    action: 'copyToCommunityStash',
-                    coffeeId: coffeeId,
-                    userBaseId: userConfig.baseId,
-                    userApiKey: userConfig.apiKey,
-                    coffeeName: coffeeName
-                })
-            });
-            
-            if (copyResponse.ok) {
-                const copyData = await copyResponse.json();
-                // Use the Community Stash ID for the brew
-                coffeeId = copyData.communityStashId;
-                console.log('Coffee synced to Community Stash:', coffeeId, copyData.existed ? '(existed)' : '(created)');
-            } else {
-                const errorData = await copyResponse.json().catch(() => ({}));
-                console.error('Failed to sync coffee to Community Stash:', errorData);
-                showMessage('Failed to sync coffee. Please try again.', 'error');
-                submitButton.disabled = false;
-                submitButton.textContent = 'Save Brew';
-                return; // Don't continue - the brew would fail anyway
-            }
-            
-            submitButton.textContent = 'Saving...';
-        } catch (error) {
-            console.error('Error syncing coffee:', error);
-            submitButton.textContent = 'Saving...';
-            // Continue anyway
-        }
-    }
+    console.log('Coffee details from cache:', coffeeDetails);
     
-    // Prepare brew data - only include fields with values
+    // Prepare brew data with coffee details as text fields (no linked record needed)
     const brewData = {
         fields: {
-            'Coffee': [coffeeId], // Link to coffee record (Community Stash)
+            // Coffee details as text fields (works for any user's base)
+            'Coffee Name': coffeeName,
+            'Roaster': coffeeDetails['Roaster'] || '',
+            'Roast Date': coffeeDetails['Roast Date'] || '',
+            'Varietal': coffeeDetails['Varietal'] || '',
+            'Origin': coffeeDetails['Origin'] || '',
+            'Process': coffeeDetails['Process'] || '',
+            // Brew details
             'Brew Date': dateTime,
             'Grinder Used': grinder,
             'Grind Size': parseFloat(grindSize),
@@ -870,11 +846,12 @@ async function loadBrews() {
             
             return {
                 ...record,
-                coffeeName: getName(fields['Name/Producer (from Coffee)']) || 'Unknown Coffee',
-                varietal: getName(fields['Varietal (from Coffee)']),
-                origin: getName(fields['Origin (from Coffee)']),
-                roaster: getName(fields['Roaster (from Coffee)']),
-                process: getName(fields['Process (from Coffee)'])
+                // Try new text fields first, fall back to lookup fields for older brews
+                coffeeName: fields['Coffee Name'] || getName(fields['Name/Producer (from Coffee)']) || 'Unknown Coffee',
+                varietal: fields['Varietal'] || getName(fields['Varietal (from Coffee)']),
+                origin: fields['Origin'] || getName(fields['Origin (from Coffee)']),
+                roaster: fields['Roaster'] || getName(fields['Roaster (from Coffee)']),
+                process: fields['Process'] || getName(fields['Process (from Coffee)'])
             };
         });
         
