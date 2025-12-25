@@ -273,10 +273,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeAuth();
     initializeFilters();
     
-    // Pre-load coffee cache in background, then load brews
-    preloadCoffeeCache().then(() => {
-        loadBrews();
-    });
+    // Load brews (uses Airtable lookup fields, no separate coffee fetch needed)
+    loadBrews();
     
     // Fetch user config and load coffees if logged in
     if (getAuthToken()) {
@@ -828,31 +826,11 @@ async function submitBrew() {
 
 // Store all brews data for filtering
 let allBrewsData = [];
-let coffeeCache = {}; // Cache coffee data to avoid repeated API calls
 
 // Pagination settings
 let currentPage = 1;
 const itemsPerPage = 10;
 
-// Pre-load all coffees into cache (called once at startup)
-async function preloadCoffeeCache() {
-    if (Object.keys(coffeeCache).length > 0) {
-        return; // Already loaded
-    }
-    
-    try {
-        const data = await callAirtableProxy('list', CONFIG.coffeeTable);
-        for (const record of data.records) {
-            coffeeCache[record.id] = {
-                name: record.fields['Name/Producer'] || 'Unknown Coffee',
-                varietal: record.fields['Varietal'] || ''
-            };
-        }
-        console.log(`Cached ${Object.keys(coffeeCache).length} coffees`);
-    } catch (error) {
-        console.error('Error preloading coffee cache:', error);
-    }
-}
 
 // Load and display brews
 async function loadBrews() {
@@ -876,19 +854,21 @@ async function loadBrews() {
             return;
         }
         
-        // Enrich brews with coffee data from cache (instant, no API calls)
+        // Use Airtable lookup fields directly from brew records (no extra API calls needed)
         allBrewsData = data.records.map(record => {
-            const enrichedRecord = { ...record, coffeeName: 'Unknown Coffee', varietal: '' };
+            const fields = record.fields;
             
-            if (record.fields.Coffee && record.fields.Coffee.length > 0) {
-                const coffeeId = record.fields.Coffee[0];
-                if (coffeeCache[coffeeId]) {
-                    enrichedRecord.coffeeName = coffeeCache[coffeeId].name;
-                    enrichedRecord.varietal = coffeeCache[coffeeId].varietal;
-                }
-            }
+            // Airtable lookup fields return arrays, get first value
+            const getName = (arr) => Array.isArray(arr) && arr.length > 0 ? arr[0] : '';
             
-            return enrichedRecord;
+            return {
+                ...record,
+                coffeeName: getName(fields['Name/Producer (from Coffee)']) || 'Unknown Coffee',
+                varietal: getName(fields['Varietal (from Coffee)']),
+                origin: getName(fields['Origin (from Coffee)']),
+                roaster: getName(fields['Roaster (from Coffee)']),
+                process: getName(fields['Process (from Coffee)'])
+            };
         });
         
         // Populate filter dropdowns

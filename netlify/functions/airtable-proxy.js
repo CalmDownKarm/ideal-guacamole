@@ -271,21 +271,60 @@ exports.handler = async (event, context) => {
 
         switch (action) {
             case 'list':
-                // List records
-                url = baseUrl;
-                const queryParams = [];
-                if (filter) {
-                    queryParams.push(`filterByFormula=${encodeURIComponent(filter)}`);
-                }
-                if (sort) {
-                    queryParams.push(`sort[0][field]=${encodeURIComponent(sort.field)}`);
-                    queryParams.push(`sort[0][direction]=${sort.direction || 'desc'}`);
-                }
-                if (queryParams.length > 0) {
-                    url += '?' + queryParams.join('&');
-                }
-                options.method = 'GET';
-                break;
+                // List ALL records with pagination support
+                // Airtable returns max 100 records per request
+                const allRecords = [];
+                let offset = null;
+                
+                do {
+                    let listUrl = baseUrl;
+                    const queryParams = [];
+                    if (filter) {
+                        queryParams.push(`filterByFormula=${encodeURIComponent(filter)}`);
+                    }
+                    if (sort) {
+                        queryParams.push(`sort[0][field]=${encodeURIComponent(sort.field)}`);
+                        queryParams.push(`sort[0][direction]=${sort.direction || 'desc'}`);
+                    }
+                    if (offset) {
+                        queryParams.push(`offset=${encodeURIComponent(offset)}`);
+                    }
+                    if (queryParams.length > 0) {
+                        listUrl += '?' + queryParams.join('&');
+                    }
+                    
+                    const listResponse = await fetch(listUrl, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (!listResponse.ok) {
+                        const errorText = await listResponse.text();
+                        return {
+                            statusCode: listResponse.status,
+                            headers: { 'Access-Control-Allow-Origin': '*' },
+                            body: JSON.stringify({ error: `Airtable API error: ${errorText}` })
+                        };
+                    }
+                    
+                    const listData = await listResponse.json();
+                    allRecords.push(...(listData.records || []));
+                    offset = listData.offset; // Will be undefined if no more pages
+                    
+                } while (offset);
+                
+                // Return all records
+                return {
+                    statusCode: 200,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    body: JSON.stringify({ records: allRecords })
+                };
 
             case 'get':
                 // Get single record
