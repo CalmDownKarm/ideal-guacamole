@@ -568,6 +568,20 @@ exports.handler = async (event, context) => {
                             const srcData = await srcResponse.json();
                             console.log('copyToCommunityStash - Got coffee data:', srcData.fields?.['Name/Producer']);
                             
+                            // Get user email from auth token for attribution
+                            let contributedBy = '';
+                            if (authToken) {
+                                try {
+                                    const tokenParts = authToken.split('.');
+                                    if (tokenParts.length === 3) {
+                                        const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
+                                        contributedBy = payload.email || '';
+                                    }
+                                } catch (e) {
+                                    console.error('Error extracting email from token:', e);
+                                }
+                            }
+                            
                             // Create in Community Stash (copy relevant fields)
                             const newCoffee = {
                                 fields: {
@@ -578,7 +592,8 @@ exports.handler = async (event, context) => {
                                     'Varietal': srcData.fields['Varietal'] || '',
                                     'Roast Date': srcData.fields['Roast Date'] || '',
                                     'Opened': true,
-                                    'Killed': false
+                                    'Killed': false,
+                                    'Contributed By': contributedBy
                                 }
                             };
                             
@@ -621,11 +636,27 @@ exports.handler = async (event, context) => {
                 
                 // Fallback: create minimal entry with just the name
                 console.log('copyToCommunityStash - Using fallback: creating minimal entry');
+                
+                // Get user email for attribution (fallback case)
+                let fallbackContributedBy = '';
+                if (authToken) {
+                    try {
+                        const tokenParts = authToken.split('.');
+                        if (tokenParts.length === 3) {
+                            const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
+                            fallbackContributedBy = payload.email || '';
+                        }
+                    } catch (e) {
+                        console.error('Error extracting email from token:', e);
+                    }
+                }
+                
                 const minimalCoffee = {
                     fields: {
                         'Name/Producer': srcCoffeeName || 'Unknown Coffee',
                         'Opened': true,
-                        'Killed': false
+                        'Killed': false,
+                        'Contributed By': fallbackContributedBy
                     }
                 };
                 
