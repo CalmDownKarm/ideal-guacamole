@@ -182,6 +182,9 @@ function parseHash() {
             fetchUserConfig().then(() => {
                 loadCoffees();
             });
+            
+            // Switch to New Brew tab after login
+            document.querySelector('[data-tab="form"]')?.click();
         } else {
             // No tokens in hash, update UI to show login
             console.log('No tokens in authResult:', authResult);
