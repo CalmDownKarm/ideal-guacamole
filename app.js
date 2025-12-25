@@ -450,6 +450,9 @@ let userConfig = {
 // Cache of loaded coffees (id -> full record)
 let coffeeCache = {};
 
+// Cache of user email -> display name (from Users table)
+let userNameCache = {};
+
 // Fetch user's Airtable config (if logged in)
 async function fetchUserConfig() {
     const authToken = getAuthToken();
@@ -700,12 +703,9 @@ async function submitBrew() {
     // Set the appropriate linked field
     brewData.fields[linkedFieldName] = [linkedRecordId];
     
-    // Add user info (CreatedBy fields)
+    // Add user email (CreatedBy field)
     if (userEmail) {
         brewData.fields['User'] = userEmail;
-    }
-    if (userName) {
-        brewData.fields['User Name'] = userName;
     }
     
     // Auto-set Brew Method based on brewer
@@ -878,16 +878,46 @@ let currentPage = 1;
 const itemsPerPage = 10;
 
 
+// Load user names from Users table into cache
+async function loadUserNames() {
+    try {
+        const data = await callAirtableProxy('list', 'Users', {});
+        userNameCache = {};
+        data.records.forEach(record => {
+            const email = record.fields['Email'];
+            const name = record.fields['Name/Display Name'];
+            if (email && name) {
+                userNameCache[email.toLowerCase()] = name;
+            }
+        });
+        console.log('Loaded', Object.keys(userNameCache).length, 'user names');
+    } catch (error) {
+        console.error('Error loading user names:', error);
+    }
+}
+
+// Get display name for a user email
+function getUserDisplayName(email) {
+    if (!email) return '';
+    const name = userNameCache[email.toLowerCase()];
+    if (name) return name;
+    // Fallback to email prefix
+    return email.includes('@') ? email.split('@')[0] : email;
+}
+
 // Load and display brews
 async function loadBrews() {
     const brewsList = document.getElementById('brews-list');
     brewsList.innerHTML = '<div class="loading">Loading brews...</div>';
     
     try {
-        // Fetch brews sorted by date (newest first)
-        const data = await callAirtableProxy('list', CONFIG.brewTable, {
-            sort: { field: 'Brew Date', direction: 'desc' }
-        });
+        // Load user names in parallel with brews
+        const [data] = await Promise.all([
+            callAirtableProxy('list', CONFIG.brewTable, {
+                sort: { field: 'Brew Date', direction: 'desc' }
+            }),
+            loadUserNames()
+        ]);
         
         if (data.records.length === 0) {
             brewsList.innerHTML = `
@@ -949,19 +979,10 @@ function populateFilters(brews) {
     const varietals = [...new Set(brews.map(b => b.varietal).filter(Boolean))].sort();
     const brewers = [...new Set(brews.map(b => b.fields.Brewer).filter(Boolean))].sort();
     const users = [...new Set(brews.map(b => {
-        // Prefer User Name, fall back to email prefix
-        const userNameField = b.fields['User Name'];
-        if (userNameField) return userNameField;
-        
         const userField = b.fields['User'];
-        if (typeof userField === 'string') {
-            return userField.includes('@') ? userField.split('@')[0] : userField;
-        }
-        if (typeof userField === 'object' && userField) {
-            const email = userField.email || userField.name || '';
-            return email.includes('@') ? email.split('@')[0] : email;
-        }
-        return '';
+        if (!userField) return '';
+        const email = typeof userField === 'string' ? userField : (userField.email || userField.name || '');
+        return getUserDisplayName(email);
     }).filter(Boolean))].sort();
     
     // Populate dropdowns (preserve current selection)
@@ -1011,23 +1032,12 @@ async function displayFilteredBrews() {
         // Brewer filter
         if (brewerFilter && brew.fields.Brewer !== brewerFilter) return false;
         
-        // User filter - match against name or email prefix
+        // User filter - match against display name from Users table
         if (userFilter) {
-            const userNameField = brew.fields['User Name'];
-            let userValue = '';
-            
-            if (userNameField) {
-                userValue = userNameField;
-            } else {
-                const userField = brew.fields['User'];
-                if (typeof userField === 'string') {
-                    userValue = userField.includes('@') ? userField.split('@')[0] : userField;
-                } else if (typeof userField === 'object' && userField) {
-                    const email = userField.email || userField.name || '';
-                    userValue = email.includes('@') ? email.split('@')[0] : email;
-                }
-            }
-            
+            const userField = brew.fields['User'];
+            if (!userField) return false;
+            const email = typeof userField === 'string' ? userField : (userField.email || userField.name || '');
+            const userValue = getUserDisplayName(email);
             if (userValue !== userFilter) return false;
         }
         
@@ -1147,22 +1157,13 @@ async function createBrewCardFromEnriched(record) {
     const method = fields['Brew Method'] || '';
     const methodClass = method.toLowerCase();
     
-    // Get user who created the brew - prefer name over email
+    // Get user who created the brew - look up name from Users table
     let createdBy = '';
-    const userNameField = fields['User Name'];
     const userField = fields['User'];
     
-    if (userNameField) {
-        // Use display name if available
-        createdBy = userNameField;
-    } else if (userField) {
-        // Fall back to email, but show just the prefix (before @)
-        if (typeof userField === 'string') {
-            createdBy = userField.includes('@') ? userField.split('@')[0] : userField;
-        } else if (typeof userField === 'object') {
-            const email = userField.email || userField.name || userField.id || '';
-            createdBy = email.includes('@') ? email.split('@')[0] : email;
-        }
+    if (userField) {
+        const email = typeof userField === 'string' ? userField : (userField.email || userField.name || '');
+        createdBy = getUserDisplayName(email);
     }
     
     card.innerHTML = `
