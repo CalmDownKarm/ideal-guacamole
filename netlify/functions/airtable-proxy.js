@@ -497,10 +497,16 @@ exports.handler = async (event, context) => {
                 // Required: coffeeId, userBaseId, userApiKey, coffeeName
                 const { coffeeId: srcCoffeeId, userBaseId: srcBaseId, userApiKey: srcApiKey, coffeeName: srcCoffeeName } = JSON.parse(event.body);
                 
+                console.log('copyToCommunityStash - srcCoffeeId:', srcCoffeeId);
+                console.log('copyToCommunityStash - srcCoffeeName:', srcCoffeeName);
+                console.log('copyToCommunityStash - srcBaseId:', srcBaseId ? `${srcBaseId.substring(0, 8)}...` : 'none');
+                
                 const COMMUNITY_STASH = process.env.COMMUNITY_STASH_TABLE || 'Community Stash';
                 
                 // First, check if coffee already exists in Community Stash by name
                 const findUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(COMMUNITY_STASH)}?filterByFormula=${encodeURIComponent(`{Name/Producer} = "${srcCoffeeName}"`)}`;
+                
+                console.log('copyToCommunityStash - Searching Community Stash for:', srcCoffeeName);
                 
                 const findResponse = await fetch(findUrl, {
                     headers: {
@@ -509,10 +515,14 @@ exports.handler = async (event, context) => {
                     }
                 });
                 
+                console.log('copyToCommunityStash - Find response status:', findResponse.status);
+                
                 if (findResponse.ok) {
                     const findData = await findResponse.json();
+                    console.log('copyToCommunityStash - Found records:', findData.records?.length || 0);
                     if (findData.records && findData.records.length > 0) {
                         // Coffee already exists in Community Stash
+                        console.log('copyToCommunityStash - Using existing:', findData.records[0].id);
                         return {
                             statusCode: 200,
                             headers: { 'Access-Control-Allow-Origin': '*' },
@@ -525,9 +535,11 @@ exports.handler = async (event, context) => {
                 }
                 
                 // Coffee doesn't exist - fetch from user's base and copy
+                console.log('copyToCommunityStash - Coffee not found, attempting to copy from user base');
                 if (srcBaseId && srcApiKey && srcCoffeeId) {
                     try {
                         const srcUrl = `https://api.airtable.com/v0/${srcBaseId}/Coffee%20Freezer/${srcCoffeeId}`;
+                        console.log('copyToCommunityStash - Fetching from user base:', srcUrl);
                         const srcResponse = await fetch(srcUrl, {
                             headers: {
                                 'Authorization': `Bearer ${srcApiKey}`,
@@ -535,8 +547,11 @@ exports.handler = async (event, context) => {
                             }
                         });
                         
+                        console.log('copyToCommunityStash - User base response status:', srcResponse.status);
+                        
                         if (srcResponse.ok) {
                             const srcData = await srcResponse.json();
+                            console.log('copyToCommunityStash - Got coffee data:', srcData.fields?.['Name/Producer']);
                             
                             // Create in Community Stash (copy relevant fields)
                             const newCoffee = {
@@ -553,6 +568,7 @@ exports.handler = async (event, context) => {
                             };
                             
                             const createUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(COMMUNITY_STASH)}`;
+                            console.log('copyToCommunityStash - Creating in Community Stash');
                             const createResponse = await fetch(createUrl, {
                                 method: 'POST',
                                 headers: {
@@ -562,8 +578,11 @@ exports.handler = async (event, context) => {
                                 body: JSON.stringify(newCoffee)
                             });
                             
+                            console.log('copyToCommunityStash - Create response status:', createResponse.status);
+                            
                             if (createResponse.ok) {
                                 const createData = await createResponse.json();
+                                console.log('copyToCommunityStash - Created with ID:', createData.id);
                                 return {
                                     statusCode: 200,
                                     headers: { 'Access-Control-Allow-Origin': '*' },
@@ -572,14 +591,21 @@ exports.handler = async (event, context) => {
                                         existed: false
                                     })
                                 };
+                            } else {
+                                const createError = await createResponse.text();
+                                console.error('copyToCommunityStash - Create failed:', createError);
                             }
+                        } else {
+                            const srcError = await srcResponse.text();
+                            console.error('copyToCommunityStash - Fetch from user base failed:', srcError);
                         }
                     } catch (e) {
-                        console.error('Error copying to Community Stash:', e);
+                        console.error('copyToCommunityStash - Error:', e);
                     }
                 }
                 
                 // Fallback: create minimal entry with just the name
+                console.log('copyToCommunityStash - Using fallback: creating minimal entry');
                 const minimalCoffee = {
                     fields: {
                         'Name/Producer': srcCoffeeName || 'Unknown Coffee',
@@ -598,8 +624,11 @@ exports.handler = async (event, context) => {
                     body: JSON.stringify(minimalCoffee)
                 });
                 
+                console.log('copyToCommunityStash - Minimal create response:', minCreateResponse.status);
+                
                 if (minCreateResponse.ok) {
                     const minCreateData = await minCreateResponse.json();
+                    console.log('copyToCommunityStash - Minimal created with ID:', minCreateData.id);
                     return {
                         statusCode: 200,
                         headers: { 'Access-Control-Allow-Origin': '*' },
@@ -609,6 +638,9 @@ exports.handler = async (event, context) => {
                         })
                     };
                 }
+                
+                const minError = await minCreateResponse.text();
+                console.error('copyToCommunityStash - Minimal create failed:', minError);
                 
                 return {
                     statusCode: 500,
