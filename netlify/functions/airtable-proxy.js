@@ -500,6 +500,21 @@ exports.handler = async (event, context) => {
                 console.log('copyToCommunityStash - srcCoffeeId:', srcCoffeeId);
                 console.log('copyToCommunityStash - srcCoffeeName:', srcCoffeeName);
                 console.log('copyToCommunityStash - srcBaseId:', srcBaseId ? `${srcBaseId.substring(0, 8)}...` : 'none');
+                console.log('copyToCommunityStash - mainBaseId:', AIRTABLE_BASE_ID ? `${AIRTABLE_BASE_ID.substring(0, 8)}...` : 'none');
+                
+                // If user's base is the same as the main base, no copy needed - use Coffee Freezer directly
+                if (srcBaseId === AIRTABLE_BASE_ID) {
+                    console.log('copyToCommunityStash - Same base, using Coffee Freezer ID directly');
+                    return {
+                        statusCode: 200,
+                        headers: { 'Access-Control-Allow-Origin': '*' },
+                        body: JSON.stringify({
+                            communityStashId: srcCoffeeId,
+                            existed: true,
+                            sameBase: true
+                        })
+                    };
+                }
                 
                 const COMMUNITY_STASH = process.env.COMMUNITY_STASH_TABLE || 'Community Stash';
                 
