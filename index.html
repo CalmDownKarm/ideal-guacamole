@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Coffee Brew Tracker - Track your coffee brews">
-    <title>Coffee Brew Tracker</title>
+    <meta name="description" content="BeanConqueror From meesho - Track your coffee brews">
+    <title>BeanConqueror From meesho</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.auth0.com/js/auth0/9.24/auth0.min.js"></script>
     <!-- Auth0 Configuration loaded from server -->
@@ -25,7 +25,7 @@
 <body>
     <div class="container">
         <header>
-            <h1>☕ Coffee Brew Tracker</h1>
+            <h1>☕ BeanConqueror From meesho</h1>
             <div id="auth-buttons" style="margin-top: 12px;">
                 <button id="login-button" class="auth-button" style="display: inline-block;">Login</button>
                 <button id="logout-button" class="auth-button" style="display: none;">Logout</button>
@@ -34,12 +34,12 @@
 
         <main>
             <div class="tabs">
-                <button class="tab-button active" data-tab="form">New Brew</button>
-                <button class="tab-button" data-tab="list">My Brews</button>
+                <button class="tab-button" data-tab="form">New Brew</button>
+                <button class="tab-button active" data-tab="list">All Brews</button>
             </div>
 
             <!-- Form Tab -->
-            <div id="form-tab" class="tab-content active">
+            <div id="form-tab" class="tab-content">
                 <!-- Auth Required Message -->
                 <div id="auth-required-message" class="message" style="display: block; margin-bottom: 20px;">
                     Please login to create new brews. Viewing brews is available to everyone.
@@ -76,16 +76,10 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="brewer">Brewer *</label>
-                            <select id="brewer" name="brewer" required>
-                                <option value="">Select brewer</option>
-                                <option value="V60">V60</option>
-                                <option value="Neo">Neo</option>
-                                <option value="Neo Switch">Neo Switch</option>
-                                <option value="Pulsar">Pulsar</option>
-                                <option value="Orea V4">Orea V4</option>
-                                <option value="ORB Soup">ORB Soup</option>
-                                <option value="Espresso">Espresso</option>
-                            </select>
+                            <input type="text" id="brewer" name="brewer" list="brewer-list" placeholder="e.g., V60, Espresso" required>
+                            <datalist id="brewer-list">
+                                <!-- Populated dynamically from existing brews -->
+                            </datalist>
                         </div>
 
                         <div class="form-group">
@@ -149,7 +143,7 @@
             </div>
 
             <!-- List Tab -->
-            <div id="list-tab" class="tab-content">
+            <div id="list-tab" class="tab-content active">
                 <div class="filter-section">
                     <div class="filter-row">
                         <div class="filter-group">

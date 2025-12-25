@@ -177,6 +177,11 @@ function parseHash() {
             
             window.location.hash = '';
             updateAuthUI();
+            
+            // Fetch user config and load coffees after successful login
+            fetchUserConfig().then(() => {
+                loadCoffees();
+            });
         } else {
             // No tokens in hash, update UI to show login
             console.log('No tokens in authResult:', authResult);
@@ -268,13 +273,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeAuth();
     initializeFilters();
     
-    // Load coffees for the form dropdown
-    loadCoffees();
-    
     // Pre-load coffee cache in background, then load brews
     preloadCoffeeCache().then(() => {
-    loadBrews();
+        loadBrews();
     });
+    
+    // Fetch user config and load coffees if logged in
+    if (getAuthToken()) {
+        fetchUserConfig().then(() => {
+            loadCoffees();
+        });
+    }
 });
 
 function initializeAuth() {
@@ -393,8 +402,13 @@ function initializeForm() {
         grindSizeManuallySet = false;
     };
     
-    // Set defaults when brewer changes
-    brewerSelect.addEventListener('change', (e) => {
+    // Set defaults when brewer changes (use 'input' for text input with datalist)
+    brewerSelect.addEventListener('input', (e) => {
+        window.setBrewerDefaults(e.target.value);
+    });
+    
+    // Also listen for blur to catch datalist selections
+    brewerSelect.addEventListener('blur', (e) => {
         window.setBrewerDefaults(e.target.value);
     });
     
@@ -402,15 +416,93 @@ function initializeForm() {
     window.setBrewerDefaults(brewerSelect.value);
 }
 
-// Load coffees from Airtable via backend proxy
+// Populate brewer datalist from existing brews
+function populateBrewerDatalist() {
+    const datalist = document.getElementById('brewer-list');
+    if (!datalist) return;
+    
+    // Get unique brewers from all brews
+    const brewers = [...new Set(allBrewsData
+        .map(b => b.fields.Brewer)
+        .filter(Boolean)
+    )].sort();
+    
+    // Add default brewers if not already present
+    const defaultBrewers = ['V60', 'Neo', 'Neo Switch', 'Pulsar', 'Orea V4', 'ORB Soup', 'Espresso'];
+    const allBrewers = [...new Set([...defaultBrewers, ...brewers])].sort();
+    
+    datalist.innerHTML = allBrewers.map(b => `<option value="${b}">`).join('');
+}
+
+// User config for multi-tenancy
+let userConfig = {
+    hasPersonalBase: false,
+    baseId: '',
+    apiKey: ''
+};
+
+// Fetch user's Airtable config (if logged in)
+async function fetchUserConfig() {
+    const authToken = getAuthToken();
+    if (!authToken) {
+        userConfig = { hasPersonalBase: false, baseId: '', apiKey: '' };
+        return;
+    }
+    
+    try {
+        const response = await fetch(PROXY_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ action: 'getUserConfig' })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            userConfig = {
+                hasPersonalBase: data.hasPersonalBase || false,
+                baseId: data.baseId || '',
+                apiKey: data.apiKey || ''
+            };
+            console.log('User config loaded:', userConfig.hasPersonalBase ? 'Personal base' : 'Community Stash');
+        }
+    } catch (error) {
+        console.error('Error fetching user config:', error);
+        userConfig = { hasPersonalBase: false, baseId: '', apiKey: '' };
+    }
+}
+
+// Load coffees from user's personal base or Community Stash
 async function loadCoffees() {
     const coffeeSelect = document.getElementById('coffee');
     
+    // Only load coffees if user is logged in
+    if (!getAuthToken()) {
+        coffeeSelect.innerHTML = '<option value="">Login to see coffees</option>';
+        return;
+    }
+    
     try {
-        const data = await callAirtableProxy('list', CONFIG.coffeeTable, {
-            filter: 'AND({Opened}, NOT({Killed}))',
-            sort: { field: 'Roast Date', direction: 'asc' }
+        // Fetch coffees using user's config (personal base or Community Stash)
+        const response = await fetch(PROXY_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                action: 'listUserCoffees',
+                userBaseId: userConfig.baseId,
+                userApiKey: userConfig.apiKey
+            })
         });
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch coffees');
+        }
+        
+        const data = await response.json();
         
         // Clear loading message
         coffeeSelect.innerHTML = '<option value="">Select a coffee</option>';
@@ -423,6 +515,14 @@ async function loadCoffees() {
             option.textContent = record.fields['Name/Producer'] || `Coffee ${record.id}`;
             coffeeSelect.appendChild(option);
         });
+        
+        // Show indicator if using Community Stash
+        if (!userConfig.hasPersonalBase) {
+            const firstOption = coffeeSelect.querySelector('option');
+            if (firstOption) {
+                firstOption.textContent = 'Select from Community Stash';
+            }
+        }
     } catch (error) {
         console.error('Error loading coffees:', error);
         coffeeSelect.innerHTML = '<option value="">Error loading coffees</option>';
@@ -488,7 +588,7 @@ async function submitBrew() {
     console.log('Form values:', { grinder, grindSize, dose, drinkWeight, numberOfPours, waterTemp });
     
     // Validate required fields
-    const coffeeId = formData.get('coffee');
+    let coffeeId = formData.get('coffee');
     if (!coffeeId) {
         showMessage('Please select a coffee from your stash.', 'error');
         submitButton.disabled = false;
@@ -503,10 +603,52 @@ async function submitBrew() {
         return;
     }
     
+    // Get coffee name from dropdown
+    const coffeeSelect = document.getElementById('coffee');
+    const coffeeName = coffeeSelect.options[coffeeSelect.selectedIndex]?.text || 'Unknown Coffee';
+    
+    // If user has personal base, copy coffee to Community Stash first
+    if (userConfig.hasPersonalBase) {
+        try {
+            submitButton.textContent = 'Syncing coffee...';
+            
+            const copyResponse = await fetch(PROXY_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${getAuthToken()}`
+                },
+                body: JSON.stringify({
+                    action: 'copyToCommunityStash',
+                    coffeeId: coffeeId,
+                    userBaseId: userConfig.baseId,
+                    userApiKey: userConfig.apiKey,
+                    coffeeName: coffeeName
+                })
+            });
+            
+            if (copyResponse.ok) {
+                const copyData = await copyResponse.json();
+                // Use the Community Stash ID for the brew
+                coffeeId = copyData.communityStashId;
+                console.log('Coffee synced to Community Stash:', coffeeId, copyData.existed ? '(existed)' : '(created)');
+            } else {
+                console.error('Failed to sync coffee to Community Stash');
+                // Continue with original ID - might not link properly but at least saves the brew
+            }
+            
+            submitButton.textContent = 'Saving...';
+        } catch (error) {
+            console.error('Error syncing coffee:', error);
+            submitButton.textContent = 'Saving...';
+            // Continue anyway
+        }
+    }
+    
     // Prepare brew data - only include fields with values
     const brewData = {
         fields: {
-            'Coffee': [coffeeId], // Link to coffee record
+            'Coffee': [coffeeId], // Link to coffee record (Community Stash)
             'Brew Date': dateTime,
             'Grinder Used': grinder,
             'Grind Size': parseFloat(grindSize),
@@ -751,6 +893,9 @@ async function loadBrews() {
         
         // Populate filter dropdowns
         populateFilters(allBrewsData);
+        
+        // Populate brewer datalist for the form
+        populateBrewerDatalist();
         
         // Display brews immediately
         displayFilteredBrews();

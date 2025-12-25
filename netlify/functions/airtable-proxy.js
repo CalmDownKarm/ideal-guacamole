@@ -312,10 +312,246 @@ exports.handler = async (event, context) => {
                 options.body = JSON.stringify(data);
                 break;
 
+            case 'getUserConfig':
+                // Get user's Airtable config from Users table
+                // Requires auth token to get user's email
+                if (!authToken) {
+                    return {
+                        statusCode: 401,
+                        headers: { 'Access-Control-Allow-Origin': '*' },
+                        body: JSON.stringify({ error: 'Authentication required' })
+                    };
+                }
+                
+                // Decode token to get email
+                try {
+                    const jwt = require('jsonwebtoken');
+                    const tokenParts = authToken.split('.');
+                    if (tokenParts.length === 3) {
+                        const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
+                        const userEmail = payload.email;
+                        
+                        if (!userEmail) {
+                            return {
+                                statusCode: 200,
+                                headers: { 'Access-Control-Allow-Origin': '*' },
+                                body: JSON.stringify({ hasPersonalBase: false })
+                            };
+                        }
+                        
+                        // Look up user in Users table
+                        const USERS_TABLE = process.env.USERS_TABLE || 'Users';
+                        const usersUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(USERS_TABLE)}?filterByFormula=${encodeURIComponent(`LOWER({Email}) = "${userEmail.toLowerCase()}"`)}`;
+                        
+                        const usersResponse = await fetch(usersUrl, {
+                            headers: {
+                                'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        
+                        if (usersResponse.ok) {
+                            const usersData = await usersResponse.json();
+                            if (usersData.records && usersData.records.length > 0) {
+                                const userRecord = usersData.records[0];
+                                return {
+                                    statusCode: 200,
+                                    headers: { 'Access-Control-Allow-Origin': '*' },
+                                    body: JSON.stringify({
+                                        hasPersonalBase: true,
+                                        baseId: userRecord.fields['Airtable Base ID'] || '',
+                                        apiKey: userRecord.fields['Airtable API Key'] || ''
+                                    })
+                                };
+                            }
+                        }
+                        
+                        // User not found in Users table - they'll use Community Stash
+                        return {
+                            statusCode: 200,
+                            headers: { 'Access-Control-Allow-Origin': '*' },
+                            body: JSON.stringify({ hasPersonalBase: false })
+                        };
+                    }
+                } catch (e) {
+                    console.error('Error getting user config:', e);
+                }
+                
+                return {
+                    statusCode: 200,
+                    headers: { 'Access-Control-Allow-Origin': '*' },
+                    body: JSON.stringify({ hasPersonalBase: false })
+                };
+
+            case 'listUserCoffees':
+                // List coffees from user's personal base or Community Stash
+                // Uses userBaseId and userApiKey from request body
+                const { userBaseId, userApiKey } = JSON.parse(event.body);
+                
+                let coffeeBaseId = AIRTABLE_BASE_ID;
+                let coffeeApiKey = AIRTABLE_API_KEY;
+                let coffeeTable = process.env.COMMUNITY_STASH_TABLE || 'Community Stash';
+                
+                if (userBaseId && userApiKey) {
+                    // User has personal base - use their credentials
+                    coffeeBaseId = userBaseId;
+                    coffeeApiKey = userApiKey;
+                    coffeeTable = 'Coffee Freezer'; // Standard table name in user's base
+                }
+                
+                const coffeeUrl = `https://api.airtable.com/v0/${coffeeBaseId}/${encodeURIComponent(coffeeTable)}?filterByFormula=${encodeURIComponent('AND({Opened}, NOT({Killed}))')}&sort[0][field]=${encodeURIComponent('Roast Date')}&sort[0][direction]=asc`;
+                
+                const coffeeResponse = await fetch(coffeeUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${coffeeApiKey}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!coffeeResponse.ok) {
+                    console.error('Error fetching coffees:', await coffeeResponse.text());
+                    return {
+                        statusCode: coffeeResponse.status,
+                        headers: { 'Access-Control-Allow-Origin': '*' },
+                        body: JSON.stringify({ error: 'Failed to fetch coffees' })
+                    };
+                }
+                
+                const coffeeData = await coffeeResponse.json();
+                return {
+                    statusCode: 200,
+                    headers: { 'Access-Control-Allow-Origin': '*' },
+                    body: JSON.stringify(coffeeData)
+                };
+
+            case 'copyToCommunityStash':
+                // Copy a coffee from user's personal base to Community Stash
+                // Required: coffeeId, userBaseId, userApiKey, coffeeName
+                const { coffeeId: srcCoffeeId, userBaseId: srcBaseId, userApiKey: srcApiKey, coffeeName: srcCoffeeName } = JSON.parse(event.body);
+                
+                const COMMUNITY_STASH = process.env.COMMUNITY_STASH_TABLE || 'Community Stash';
+                
+                // First, check if coffee already exists in Community Stash by name
+                const findUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(COMMUNITY_STASH)}?filterByFormula=${encodeURIComponent(`{Name/Producer} = "${srcCoffeeName}"`)}`;
+                
+                const findResponse = await fetch(findUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (findResponse.ok) {
+                    const findData = await findResponse.json();
+                    if (findData.records && findData.records.length > 0) {
+                        // Coffee already exists in Community Stash
+                        return {
+                            statusCode: 200,
+                            headers: { 'Access-Control-Allow-Origin': '*' },
+                            body: JSON.stringify({
+                                communityStashId: findData.records[0].id,
+                                existed: true
+                            })
+                        };
+                    }
+                }
+                
+                // Coffee doesn't exist - fetch from user's base and copy
+                if (srcBaseId && srcApiKey && srcCoffeeId) {
+                    try {
+                        const srcUrl = `https://api.airtable.com/v0/${srcBaseId}/Coffee%20Freezer/${srcCoffeeId}`;
+                        const srcResponse = await fetch(srcUrl, {
+                            headers: {
+                                'Authorization': `Bearer ${srcApiKey}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        
+                        if (srcResponse.ok) {
+                            const srcData = await srcResponse.json();
+                            
+                            // Create in Community Stash (copy relevant fields)
+                            const newCoffee = {
+                                fields: {
+                                    'Name/Producer': srcData.fields['Name/Producer'] || '',
+                                    'Roaster': srcData.fields['Roaster'] || '',
+                                    'Origin': srcData.fields['Origin'] || '',
+                                    'Process': srcData.fields['Process'] || '',
+                                    'Varietal': srcData.fields['Varietal'] || '',
+                                    'Roast Date': srcData.fields['Roast Date'] || '',
+                                    'Opened': true,
+                                    'Killed': false
+                                }
+                            };
+                            
+                            const createUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(COMMUNITY_STASH)}`;
+                            const createResponse = await fetch(createUrl, {
+                                method: 'POST',
+                                headers: {
+                                    'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify(newCoffee)
+                            });
+                            
+                            if (createResponse.ok) {
+                                const createData = await createResponse.json();
+                                return {
+                                    statusCode: 200,
+                                    headers: { 'Access-Control-Allow-Origin': '*' },
+                                    body: JSON.stringify({
+                                        communityStashId: createData.id,
+                                        existed: false
+                                    })
+                                };
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Error copying to Community Stash:', e);
+                    }
+                }
+                
+                // Fallback: create minimal entry with just the name
+                const minimalCoffee = {
+                    fields: {
+                        'Name/Producer': srcCoffeeName || 'Unknown Coffee',
+                        'Opened': true,
+                        'Killed': false
+                    }
+                };
+                
+                const minCreateUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(COMMUNITY_STASH)}`;
+                const minCreateResponse = await fetch(minCreateUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(minimalCoffee)
+                });
+                
+                if (minCreateResponse.ok) {
+                    const minCreateData = await minCreateResponse.json();
+                    return {
+                        statusCode: 200,
+                        headers: { 'Access-Control-Allow-Origin': '*' },
+                        body: JSON.stringify({
+                            communityStashId: minCreateData.id,
+                            existed: false
+                        })
+                    };
+                }
+                
+                return {
+                    statusCode: 500,
+                    headers: { 'Access-Control-Allow-Origin': '*' },
+                    body: JSON.stringify({ error: 'Failed to copy coffee to Community Stash' })
+                };
+
             default:
                 return {
                     statusCode: 400,
-                    body: JSON.stringify({ error: 'Invalid action. Use: list, get, or create' })
+                    body: JSON.stringify({ error: 'Invalid action. Use: list, get, create, getUserConfig, listUserCoffees, or copyToCommunityStash' })
                 };
         }
 
