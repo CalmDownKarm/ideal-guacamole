@@ -634,8 +634,12 @@ async function submitBrew() {
                 coffeeId = copyData.communityStashId;
                 console.log('Coffee synced to Community Stash:', coffeeId, copyData.existed ? '(existed)' : '(created)');
             } else {
-                console.error('Failed to sync coffee to Community Stash');
-                // Continue with original ID - might not link properly but at least saves the brew
+                const errorData = await copyResponse.json().catch(() => ({}));
+                console.error('Failed to sync coffee to Community Stash:', errorData);
+                showMessage('Failed to sync coffee. Please try again.', 'error');
+                submitButton.disabled = false;
+                submitButton.textContent = 'Save Brew';
+                return; // Don't continue - the brew would fail anyway
             }
             
             submitButton.textContent = 'Saving...';
