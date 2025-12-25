@@ -273,7 +273,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Pre-load coffee cache in background, then load brews
     preloadCoffeeCache().then(() => {
-        loadBrews();
+    loadBrews();
     });
 });
 
@@ -789,14 +789,20 @@ function populateFilters(brews) {
     const currentBrewer = brewerFilter.value;
     const currentUser = userFilter.value;
     
+    // Helper to truncate long text for display
+    const truncate = (text, maxLen = 25) => {
+        if (!text || text.length <= maxLen) return text;
+        return text.substring(0, maxLen) + '...';
+    };
+    
     coffeeFilter.innerHTML = '<option value="">All Coffees</option>' + 
-        coffees.map(c => `<option value="${c}">${c}</option>`).join('');
+        coffees.map(c => `<option value="${c}" title="${c}">${truncate(c)}</option>`).join('');
     varietalFilter.innerHTML = '<option value="">All Varietals</option>' + 
-        varietals.map(v => `<option value="${v}">${v}</option>`).join('');
+        varietals.map(v => `<option value="${v}" title="${v}">${truncate(v)}</option>`).join('');
     brewerFilter.innerHTML = '<option value="">All Brewers</option>' + 
-        brewers.map(b => `<option value="${b}">${b}</option>`).join('');
+        brewers.map(b => `<option value="${b}" title="${b}">${truncate(b)}</option>`).join('');
     userFilter.innerHTML = '<option value="">All Users</option>' + 
-        users.map(u => `<option value="${u}">${u}</option>`).join('');
+        users.map(u => `<option value="${u}" title="${u}">${truncate(u, 20)}</option>`).join('');
     
     // Restore selections
     coffeeFilter.value = currentCoffee;
