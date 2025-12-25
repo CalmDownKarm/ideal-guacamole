@@ -613,23 +613,75 @@ async function submitBrew() {
         return;
     }
     
-    // Get coffee details from cache
+    // Get coffee name from cache for display/logging
     const coffeeDetails = coffeeCache[coffeeId] || {};
     const coffeeName = coffeeDetails['Name/Producer'] || 'Unknown Coffee';
     
     console.log('Coffee details from cache:', coffeeDetails);
     
-    // Prepare brew data with coffee details as text fields (no linked record needed)
+    // Determine if user's base is same as main base
+    // If same base: use Coffee linked field (links to Coffee Freezer)
+    // If different base: copy to Community Stash and use Community Stash linked field
+    const isSameBase = userConfig.baseId === '' || !userConfig.hasPersonalBase;
+    let linkedFieldName = 'Coffee';
+    let linkedRecordId = coffeeId;
+    
+    // For users with a personal base that's different from the main base
+    if (userConfig.hasPersonalBase) {
+        try {
+            submitButton.textContent = 'Syncing coffee...';
+            
+            const copyResponse = await fetch(PROXY_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${getAuthToken()}`
+                },
+                body: JSON.stringify({
+                    action: 'copyToCommunityStash',
+                    coffeeId: coffeeId,
+                    userBaseId: userConfig.baseId,
+                    userApiKey: userConfig.apiKey,
+                    coffeeName: coffeeName
+                })
+            });
+            
+            if (copyResponse.ok) {
+                const copyData = await copyResponse.json();
+                
+                if (copyData.sameBase) {
+                    // Same base - use Coffee linked field directly
+                    linkedFieldName = 'Coffee';
+                    linkedRecordId = copyData.communityStashId; // This is the original Coffee Freezer ID
+                    console.log('Same base - using Coffee field:', linkedRecordId);
+                } else {
+                    // Different base - use Community Stash linked field
+                    linkedFieldName = 'Community Stash';
+                    linkedRecordId = copyData.communityStashId;
+                    console.log('Different base - using Community Stash field:', linkedRecordId, copyData.existed ? '(existed)' : '(created)');
+                }
+            } else {
+                const errorData = await copyResponse.json().catch(() => ({}));
+                console.error('Failed to sync coffee:', errorData);
+                showMessage('Failed to sync coffee. Please try again.', 'error');
+                submitButton.disabled = false;
+                submitButton.textContent = 'Save Brew';
+                return;
+            }
+            
+            submitButton.textContent = 'Saving...';
+        } catch (error) {
+            console.error('Error syncing coffee:', error);
+            showMessage('Failed to sync coffee. Please try again.', 'error');
+            submitButton.disabled = false;
+            submitButton.textContent = 'Save Brew';
+            return;
+        }
+    }
+    
+    // Prepare brew data with the appropriate linked field
     const brewData = {
         fields: {
-            // Coffee details as text fields (works for any user's base)
-            'Coffee Name': coffeeName,
-            'Roaster': coffeeDetails['Roaster'] || '',
-            'Roast Date': coffeeDetails['Roast Date'] || '',
-            'Varietal': coffeeDetails['Varietal'] || '',
-            'Origin': coffeeDetails['Origin'] || '',
-            'Process': coffeeDetails['Process'] || '',
-            // Brew details
             'Brew Date': dateTime,
             'Grinder Used': grinder,
             'Grind Size': parseFloat(grindSize),
@@ -639,6 +691,9 @@ async function submitBrew() {
             'Enjoyment Rating': parseInt(formData.get('enjoyment'))
         }
     };
+    
+    // Set the appropriate linked field
+    brewData.fields[linkedFieldName] = [linkedRecordId];
     
     // Add user email (CreatedBy field)
     if (userEmail) {
@@ -846,12 +901,12 @@ async function loadBrews() {
             
             return {
                 ...record,
-                // Try new text fields first, fall back to lookup fields for older brews
-                coffeeName: fields['Coffee Name'] || getName(fields['Name/Producer (from Coffee)']) || 'Unknown Coffee',
-                varietal: fields['Varietal'] || getName(fields['Varietal (from Coffee)']),
-                origin: fields['Origin'] || getName(fields['Origin (from Coffee)']),
-                roaster: fields['Roaster'] || getName(fields['Roaster (from Coffee)']),
-                process: fields['Process'] || getName(fields['Process (from Coffee)'])
+                // Try Coffee Freezer lookup fields first, then Community Stash lookup fields
+                coffeeName: getName(fields['Name/Producer (from Coffee)']) || getName(fields['Name/Producer (from Community Stash)']) || 'Unknown Coffee',
+                varietal: getName(fields['Varietal (from Coffee)']) || getName(fields['Varietal (from Community Stash)']),
+                origin: getName(fields['Origin (from Coffee)']) || getName(fields['Origin (from Community Stash)']),
+                roaster: getName(fields['Roaster (from Coffee)']) || getName(fields['Roaster (from Community Stash)']),
+                process: getName(fields['Process (from Coffee)']) || getName(fields['Process (from Community Stash)'])
             };
         });
         
