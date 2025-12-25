@@ -364,13 +364,15 @@ exports.handler = async (event, context) => {
                 
                 // Decode token to get email
                 try {
-                    const jwt = require('jsonwebtoken');
                     const tokenParts = authToken.split('.');
                     if (tokenParts.length === 3) {
                         const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
                         const userEmail = payload.email;
                         
+                        console.log('getUserConfig - userEmail from token:', userEmail);
+                        
                         if (!userEmail) {
+                            console.log('getUserConfig - No email in token, returning hasPersonalBase: false');
                             return {
                                 statusCode: 200,
                                 headers: { 'Access-Control-Allow-Origin': '*' },
@@ -380,7 +382,12 @@ exports.handler = async (event, context) => {
                         
                         // Look up user in Users table
                         const USERS_TABLE = process.env.USERS_TABLE || 'Users';
-                        const usersUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(USERS_TABLE)}?filterByFormula=${encodeURIComponent(`LOWER({Email}) = "${userEmail.toLowerCase()}"`)}`;
+                        const filterFormula = `LOWER({Email}) = "${userEmail.toLowerCase()}"`;
+                        const usersUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(USERS_TABLE)}?filterByFormula=${encodeURIComponent(filterFormula)}`;
+                        
+                        console.log('getUserConfig - Looking up in table:', USERS_TABLE);
+                        console.log('getUserConfig - Filter formula:', filterFormula);
+                        console.log('getUserConfig - URL:', usersUrl);
                         
                         const usersResponse = await fetch(usersUrl, {
                             headers: {
@@ -389,23 +396,34 @@ exports.handler = async (event, context) => {
                             }
                         });
                         
+                        const usersData = await usersResponse.json();
+                        console.log('getUserConfig - Airtable response status:', usersResponse.status);
+                        console.log('getUserConfig - Airtable response:', JSON.stringify(usersData, null, 2));
+                        
                         if (usersResponse.ok) {
-                            const usersData = await usersResponse.json();
                             if (usersData.records && usersData.records.length > 0) {
                                 const userRecord = usersData.records[0];
+                                console.log('getUserConfig - Found user record:', JSON.stringify(userRecord.fields, null, 2));
+                                const result = {
+                                    hasPersonalBase: true,
+                                    baseId: userRecord.fields['Airtable Base ID'] || '',
+                                    apiKey: userRecord.fields['Airtable API Key'] || ''
+                                };
+                                console.log('getUserConfig - Returning:', JSON.stringify(result, null, 2));
                                 return {
                                     statusCode: 200,
                                     headers: { 'Access-Control-Allow-Origin': '*' },
-                                    body: JSON.stringify({
-                                        hasPersonalBase: true,
-                                        baseId: userRecord.fields['Airtable Base ID'] || '',
-                                        apiKey: userRecord.fields['Airtable API Key'] || ''
-                                    })
+                                    body: JSON.stringify(result)
                                 };
+                            } else {
+                                console.log('getUserConfig - No records found for email:', userEmail);
                             }
+                        } else {
+                            console.log('getUserConfig - Airtable error:', usersData.error);
                         }
                         
                         // User not found in Users table - they'll use Community Stash
+                        console.log('getUserConfig - User not found, returning hasPersonalBase: false');
                         return {
                             statusCode: 200,
                             headers: { 'Access-Control-Allow-Origin': '*' },
