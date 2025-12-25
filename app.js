@@ -267,8 +267,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeForm();
     initializeAuth();
     initializeFilters();
+    
+    // Load coffees for the form dropdown
     loadCoffees();
-    loadBrews();
+    
+    // Pre-load coffee cache in background, then load brews
+    preloadCoffeeCache().then(() => {
+        loadBrews();
+    });
 });
 
 function initializeAuth() {
@@ -686,6 +692,26 @@ let coffeeCache = {}; // Cache coffee data to avoid repeated API calls
 let currentPage = 1;
 const itemsPerPage = 10;
 
+// Pre-load all coffees into cache (called once at startup)
+async function preloadCoffeeCache() {
+    if (Object.keys(coffeeCache).length > 0) {
+        return; // Already loaded
+    }
+    
+    try {
+        const data = await callAirtableProxy('list', CONFIG.coffeeTable);
+        for (const record of data.records) {
+            coffeeCache[record.id] = {
+                name: record.fields['Name/Producer'] || 'Unknown Coffee',
+                varietal: record.fields['Varietal'] || ''
+            };
+        }
+        console.log(`Cached ${Object.keys(coffeeCache).length} coffees`);
+    } catch (error) {
+        console.error('Error preloading coffee cache:', error);
+    }
+}
+
 // Load and display brews
 async function loadBrews() {
     const brewsList = document.getElementById('brews-list');
@@ -708,41 +734,25 @@ async function loadBrews() {
             return;
         }
         
-        // Enrich brews with coffee data
-        allBrewsData = [];
-        for (const record of data.records) {
+        // Enrich brews with coffee data from cache (instant, no API calls)
+        allBrewsData = data.records.map(record => {
             const enrichedRecord = { ...record, coffeeName: 'Unknown Coffee', varietal: '' };
             
             if (record.fields.Coffee && record.fields.Coffee.length > 0) {
                 const coffeeId = record.fields.Coffee[0];
-                
-                // Check cache first
                 if (coffeeCache[coffeeId]) {
                     enrichedRecord.coffeeName = coffeeCache[coffeeId].name;
                     enrichedRecord.varietal = coffeeCache[coffeeId].varietal;
-                } else {
-                    try {
-                        const coffeeData = await callAirtableProxy('get', CONFIG.coffeeTable, {
-                            recordId: coffeeId
-                        });
-                        const name = coffeeData.fields['Name/Producer'] || 'Unknown Coffee';
-                        const varietal = coffeeData.fields['Varietal'] || '';
-                        coffeeCache[coffeeId] = { name, varietal };
-                        enrichedRecord.coffeeName = name;
-                        enrichedRecord.varietal = varietal;
-                    } catch (error) {
-                        console.error('Error fetching coffee data:', error);
-                    }
                 }
             }
             
-            allBrewsData.push(enrichedRecord);
-        }
+            return enrichedRecord;
+        });
         
         // Populate filter dropdowns
         populateFilters(allBrewsData);
         
-        // Display brews
+        // Display brews immediately
         displayFilteredBrews();
         
     } catch (error) {
