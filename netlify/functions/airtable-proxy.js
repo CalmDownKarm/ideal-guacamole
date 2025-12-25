@@ -282,7 +282,7 @@ exports.handler = async (event, context) => {
                     if (filter) {
                         queryParams.push(`filterByFormula=${encodeURIComponent(filter)}`);
                     }
-                    if (sort) {
+                if (sort) {
                         queryParams.push(`sort[0][field]=${encodeURIComponent(sort.field)}`);
                         queryParams.push(`sort[0][direction]=${sort.direction || 'desc'}`);
                     }
@@ -449,14 +449,22 @@ exports.handler = async (event, context) => {
                 let coffeeApiKey = AIRTABLE_API_KEY;
                 let coffeeTable = process.env.COMMUNITY_STASH_TABLE || 'Community Stash';
                 
+                console.log('listUserCoffees - userBaseId provided:', !!userBaseId, userBaseId ? `(${userBaseId.substring(0, 8)}...)` : '');
+                console.log('listUserCoffees - userApiKey provided:', !!userApiKey, userApiKey ? `(${userApiKey.substring(0, 8)}...)` : '');
+                
                 if (userBaseId && userApiKey) {
                     // User has personal base - use their credentials
                     coffeeBaseId = userBaseId;
                     coffeeApiKey = userApiKey;
                     coffeeTable = 'Coffee Freezer'; // Standard table name in user's base
+                    console.log('listUserCoffees - Using personal base');
+                } else {
+                    console.log('listUserCoffees - Using Community Stash');
                 }
                 
                 const coffeeUrl = `https://api.airtable.com/v0/${coffeeBaseId}/${encodeURIComponent(coffeeTable)}?filterByFormula=${encodeURIComponent('AND({Opened}, NOT({Killed}))')}&sort[0][field]=${encodeURIComponent('Roast Date')}&sort[0][direction]=asc`;
+                
+                console.log('listUserCoffees - Fetching from:', coffeeUrl);
                 
                 const coffeeResponse = await fetch(coffeeUrl, {
                     headers: {
@@ -465,12 +473,15 @@ exports.handler = async (event, context) => {
                     }
                 });
                 
+                console.log('listUserCoffees - Response status:', coffeeResponse.status);
+                
                 if (!coffeeResponse.ok) {
-                    console.error('Error fetching coffees:', await coffeeResponse.text());
+                    const errorText = await coffeeResponse.text();
+                    console.error('listUserCoffees - Error fetching coffees:', errorText);
                     return {
                         statusCode: coffeeResponse.status,
                         headers: { 'Access-Control-Allow-Origin': '*' },
-                        body: JSON.stringify({ error: 'Failed to fetch coffees' })
+                        body: JSON.stringify({ error: 'Failed to fetch coffees', details: errorText })
                     };
                 }
                 
