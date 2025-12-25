@@ -266,6 +266,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeTabs();
     initializeForm();
     initializeAuth();
+    initializeFilters();
     loadCoffees();
     loadBrews();
 });
@@ -677,6 +678,14 @@ async function submitBrew() {
     }
 }
 
+// Store all brews data for filtering
+let allBrewsData = [];
+let coffeeCache = {}; // Cache coffee data to avoid repeated API calls
+
+// Pagination settings
+let currentPage = 1;
+const itemsPerPage = 10;
+
 // Load and display brews
 async function loadBrews() {
     const brewsList = document.getElementById('brews-list');
@@ -695,17 +704,46 @@ async function loadBrews() {
                     <div class="empty-state-text">No brews yet. Start tracking your coffee!</div>
                 </div>
             `;
+            populateFilters([]);
             return;
         }
         
-        // Clear loading message
-        brewsList.innerHTML = '';
-        
-        // Display each brew
+        // Enrich brews with coffee data
+        allBrewsData = [];
         for (const record of data.records) {
-            const brewCard = await createBrewCard(record);
-            brewsList.appendChild(brewCard);
+            const enrichedRecord = { ...record, coffeeName: 'Unknown Coffee', varietal: '' };
+            
+            if (record.fields.Coffee && record.fields.Coffee.length > 0) {
+                const coffeeId = record.fields.Coffee[0];
+                
+                // Check cache first
+                if (coffeeCache[coffeeId]) {
+                    enrichedRecord.coffeeName = coffeeCache[coffeeId].name;
+                    enrichedRecord.varietal = coffeeCache[coffeeId].varietal;
+                } else {
+                    try {
+                        const coffeeData = await callAirtableProxy('get', CONFIG.coffeeTable, {
+                            recordId: coffeeId
+                        });
+                        const name = coffeeData.fields['Name/Producer'] || 'Unknown Coffee';
+                        const varietal = coffeeData.fields['Varietal'] || '';
+                        coffeeCache[coffeeId] = { name, varietal };
+                        enrichedRecord.coffeeName = name;
+                        enrichedRecord.varietal = varietal;
+                    } catch (error) {
+                        console.error('Error fetching coffee data:', error);
+                    }
+                }
+            }
+            
+            allBrewsData.push(enrichedRecord);
         }
+        
+        // Populate filter dropdowns
+        populateFilters(allBrewsData);
+        
+        // Display brews
+        displayFilteredBrews();
         
     } catch (error) {
         console.error('Error loading brews:', error);
@@ -717,25 +755,181 @@ async function loadBrews() {
     }
 }
 
-// Create brew card element
-async function createBrewCard(record) {
+// Populate filter dropdowns with unique values
+function populateFilters(brews) {
+    const coffeeFilter = document.getElementById('filter-coffee');
+    const varietalFilter = document.getElementById('filter-varietal');
+    const brewerFilter = document.getElementById('filter-brewer');
+    const userFilter = document.getElementById('filter-user');
+    
+    // Get unique values
+    const coffees = [...new Set(brews.map(b => b.coffeeName).filter(Boolean))].sort();
+    const varietals = [...new Set(brews.map(b => b.varietal).filter(Boolean))].sort();
+    const brewers = [...new Set(brews.map(b => b.fields.Brewer).filter(Boolean))].sort();
+    const users = [...new Set(brews.map(b => {
+        const userField = b.fields['User'];
+        if (typeof userField === 'string') return userField;
+        if (typeof userField === 'object' && userField) return userField.email || userField.name || '';
+        return '';
+    }).filter(Boolean))].sort();
+    
+    // Populate dropdowns (preserve current selection)
+    const currentCoffee = coffeeFilter.value;
+    const currentVarietal = varietalFilter.value;
+    const currentBrewer = brewerFilter.value;
+    const currentUser = userFilter.value;
+    
+    coffeeFilter.innerHTML = '<option value="">All Coffees</option>' + 
+        coffees.map(c => `<option value="${c}">${c}</option>`).join('');
+    varietalFilter.innerHTML = '<option value="">All Varietals</option>' + 
+        varietals.map(v => `<option value="${v}">${v}</option>`).join('');
+    brewerFilter.innerHTML = '<option value="">All Brewers</option>' + 
+        brewers.map(b => `<option value="${b}">${b}</option>`).join('');
+    userFilter.innerHTML = '<option value="">All Users</option>' + 
+        users.map(u => `<option value="${u}">${u}</option>`).join('');
+    
+    // Restore selections
+    coffeeFilter.value = currentCoffee;
+    varietalFilter.value = currentVarietal;
+    brewerFilter.value = currentBrewer;
+    userFilter.value = currentUser;
+}
+
+// Display brews based on current filters
+async function displayFilteredBrews() {
+    const brewsList = document.getElementById('brews-list');
+    const coffeeFilter = document.getElementById('filter-coffee').value;
+    const varietalFilter = document.getElementById('filter-varietal').value;
+    const brewerFilter = document.getElementById('filter-brewer').value;
+    const userFilter = document.getElementById('filter-user').value;
+    
+    // Filter brews
+    let filteredBrews = allBrewsData.filter(brew => {
+        // Coffee filter
+        if (coffeeFilter && brew.coffeeName !== coffeeFilter) return false;
+        
+        // Varietal filter
+        if (varietalFilter && brew.varietal !== varietalFilter) return false;
+        
+        // Brewer filter
+        if (brewerFilter && brew.fields.Brewer !== brewerFilter) return false;
+        
+        // User filter
+        if (userFilter) {
+            const userField = brew.fields['User'];
+            let userValue = '';
+            if (typeof userField === 'string') userValue = userField;
+            else if (typeof userField === 'object' && userField) userValue = userField.email || userField.name || '';
+            if (userValue !== userFilter) return false;
+        }
+        
+        return true;
+    });
+    
+    if (filteredBrews.length === 0) {
+        brewsList.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">🔍</div>
+                <div class="empty-state-text">No brews match your filters.</div>
+            </div>
+        `;
+        updatePagination(0, 0);
+        return;
+    }
+    
+    // Pagination calculations
+    const totalItems = filteredBrews.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    
+    // Ensure current page is valid
+    if (currentPage > totalPages) {
+        currentPage = totalPages;
+    }
+    if (currentPage < 1) {
+        currentPage = 1;
+    }
+    
+    // Get items for current page
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const pageBrews = filteredBrews.slice(startIndex, endIndex);
+    
+    // Clear and display
+    brewsList.innerHTML = '';
+    for (const record of pageBrews) {
+        const brewCard = await createBrewCardFromEnriched(record);
+        brewsList.appendChild(brewCard);
+    }
+    
+    // Update pagination controls
+    updatePagination(currentPage, totalPages);
+}
+
+// Update pagination controls
+function updatePagination(current, total) {
+    const prevButton = document.getElementById('prev-page');
+    const nextButton = document.getElementById('next-page');
+    const pageInfo = document.getElementById('page-info');
+    
+    if (!prevButton || !nextButton || !pageInfo) return;
+    
+    if (total === 0) {
+        pageInfo.textContent = 'No results';
+        prevButton.disabled = true;
+        nextButton.disabled = true;
+    } else {
+        pageInfo.textContent = `Page ${current} of ${total}`;
+        prevButton.disabled = current <= 1;
+        nextButton.disabled = current >= total;
+    }
+}
+
+// Initialize filter event listeners
+function initializeFilters() {
+    const filters = ['filter-coffee', 'filter-varietal', 'filter-brewer', 'filter-user'];
+    filters.forEach(filterId => {
+        const filterEl = document.getElementById(filterId);
+        if (filterEl) {
+            // Reset to page 1 when filter changes
+            filterEl.addEventListener('change', () => {
+                currentPage = 1;
+                displayFilteredBrews();
+            });
+        }
+    });
+    
+    // Pagination buttons
+    const prevButton = document.getElementById('prev-page');
+    const nextButton = document.getElementById('next-page');
+    
+    if (prevButton) {
+        prevButton.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                displayFilteredBrews();
+                // Scroll to top of list
+                document.getElementById('brews-list').scrollIntoView({ behavior: 'smooth' });
+            }
+        });
+    }
+    
+    if (nextButton) {
+        nextButton.addEventListener('click', () => {
+            currentPage++;
+            displayFilteredBrews();
+            // Scroll to top of list
+            document.getElementById('brews-list').scrollIntoView({ behavior: 'smooth' });
+        });
+    }
+}
+
+// Create brew card from enriched record (with cached coffee data)
+async function createBrewCardFromEnriched(record) {
     const card = document.createElement('div');
     card.className = 'brew-card';
     
     const fields = record.fields;
-    
-    // Get coffee name if linked
-    let coffeeName = 'Unknown Coffee';
-    if (fields.Coffee && fields.Coffee.length > 0) {
-        try {
-            const coffeeData = await callAirtableProxy('get', CONFIG.coffeeTable, {
-                recordId: fields.Coffee[0]
-            });
-            coffeeName = coffeeData.fields['Name/Producer'] || 'Unknown Coffee';
-        } catch (error) {
-            console.error('Error fetching coffee name:', error);
-        }
-    }
+    const coffeeName = record.coffeeName || 'Unknown Coffee';
     
     // Format date
     const dateTime = fields['Brew Date'] || '';
@@ -746,14 +940,12 @@ async function createBrewCard(record) {
     const methodClass = method.toLowerCase();
     
     // Get user who created the brew
-    // Handle different field types: string, object (Collaborator), or array (linked record)
     let createdBy = '';
     const userField = fields['User'];
     if (userField) {
         if (typeof userField === 'string') {
             createdBy = userField;
         } else if (typeof userField === 'object') {
-            // Collaborator field type has email and name properties
             createdBy = userField.email || userField.name || userField.id || '';
         }
     }

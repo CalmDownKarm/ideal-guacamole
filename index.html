@@ -150,8 +150,41 @@
 
             <!-- List Tab -->
             <div id="list-tab" class="tab-content">
+                <div class="filter-section">
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label for="filter-coffee">Coffee</label>
+                            <select id="filter-coffee">
+                                <option value="">All Coffees</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-varietal">Varietal</label>
+                            <select id="filter-varietal">
+                                <option value="">All Varietals</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-brewer">Brewer</label>
+                            <select id="filter-brewer">
+                                <option value="">All Brewers</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-user">User</label>
+                            <select id="filter-user">
+                                <option value="">All Users</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
                 <div id="brews-list" class="brews-list">
                     <div class="loading">Loading brews...</div>
+                </div>
+                <div id="pagination" class="pagination">
+                    <button id="prev-page" class="pagination-button" disabled>← Previous</button>
+                    <span id="page-info" class="page-info">Page 1 of 1</span>
+                    <button id="next-page" class="pagination-button" disabled>Next →</button>
                 </div>
             </div>
         </main>
