@@ -76,10 +76,12 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="brewer">Brewer *</label>
-                            <input type="text" id="brewer" name="brewer" list="brewer-list" placeholder="e.g., V60, Espresso" required>
-                            <datalist id="brewer-list">
+                            <select id="brewer" name="brewer" required>
+                                <option value="">Select brewer</option>
                                 <!-- Populated dynamically from existing brews -->
-                            </datalist>
+                                <option value="__other__">Other...</option>
+                            </select>
+                            <input type="text" id="brewer-other" name="brewer-other" placeholder="Enter custom brewer" style="display: none; margin-top: 8px;">
                         </div>
 
                         <div class="form-group">

@@ -408,24 +408,29 @@ function initializeForm() {
         grindSizeManuallySet = false;
     };
     
-    // Set defaults when brewer changes (use 'input' for text input with datalist)
-    brewerSelect.addEventListener('input', (e) => {
-        window.setBrewerDefaults(e.target.value);
-    });
+    // Handle "Other" option for brewer
+    const brewerOtherInput = document.getElementById('brewer-other');
     
-    // Also listen for blur to catch datalist selections
-    brewerSelect.addEventListener('blur', (e) => {
-        window.setBrewerDefaults(e.target.value);
+    brewerSelect.addEventListener('change', (e) => {
+        const value = e.target.value;
+        if (value === '__other__') {
+            brewerOtherInput.style.display = 'block';
+            brewerOtherInput.focus();
+        } else {
+            brewerOtherInput.style.display = 'none';
+            brewerOtherInput.value = '';
+            window.setBrewerDefaults(value);
+        }
     });
     
     // Set initial defaults on page load
     window.setBrewerDefaults(brewerSelect.value);
 }
 
-// Populate brewer datalist from existing brews
+// Populate brewer select dropdown from existing brews
 function populateBrewerDatalist() {
-    const datalist = document.getElementById('brewer-list');
-    if (!datalist) return;
+    const brewerSelect = document.getElementById('brewer');
+    if (!brewerSelect) return;
     
     // Get unique brewers from all brews
     const brewers = [...new Set(allBrewsData
@@ -433,11 +438,14 @@ function populateBrewerDatalist() {
         .filter(Boolean)
     )].sort();
     
-    // Add default brewers if not already present
-    const defaultBrewers = ['V60', 'Neo', 'Neo Switch', 'Pulsar', 'Orea V4', 'ORB Soup', 'Espresso'];
-    const allBrewers = [...new Set([...defaultBrewers, ...brewers])].sort();
+    // Build options: empty + brewers from data + "Other"
+    let options = '<option value="">Select brewer</option>';
+    brewers.forEach(b => {
+        options += `<option value="${b}">${b}</option>`;
+    });
+    options += '<option value="__other__">Other...</option>';
     
-    datalist.innerHTML = allBrewers.map(b => `<option value="${b}">`).join('');
+    brewerSelect.innerHTML = options;
 }
 
 // User config for multi-tenancy
@@ -561,8 +569,11 @@ async function submitBrew() {
     const now = new Date();
     const dateTime = now.toISOString().split('T')[0]; // "2024-12-24"
     
-    // Get brewer to determine defaults
-    const brewer = formData.get('brewer') || '';
+    // Get brewer to determine defaults (handle "Other" option)
+    let brewer = formData.get('brewer') || '';
+    if (brewer === '__other__') {
+        brewer = formData.get('brewer-other') || '';
+    }
     
     // Helper function to get default values based on brewer
     function getDefaultValue(field, brewer) {
@@ -784,6 +795,13 @@ async function submitBrew() {
         const brewerSelect = document.getElementById('brewer');
         if (brewerSelect) {
             brewerSelect.value = ''; // Clear brewer selection
+        }
+        
+        // Hide and clear "Other" brewer input
+        const brewerOther = document.getElementById('brewer-other');
+        if (brewerOther) {
+            brewerOther.style.display = 'none';
+            brewerOther.value = '';
         }
         
         // Apply defaults with forceReset to ensure grind size is reset
