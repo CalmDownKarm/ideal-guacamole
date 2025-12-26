@@ -444,20 +444,18 @@ function populateBrewerDatalist() {
 let userConfig = {
     hasPersonalBase: false,
     baseId: '',
-    apiKey: ''
+    apiKey: '',
+    userRecordId: '' // User's record ID in Users table for linking
 };
 
 // Cache of loaded coffees (id -> full record)
 let coffeeCache = {};
 
-// Cache of user email -> display name (from Users table)
-let userNameCache = {};
-
 // Fetch user's Airtable config (if logged in)
 async function fetchUserConfig() {
     const authToken = getAuthToken();
     if (!authToken) {
-        userConfig = { hasPersonalBase: false, baseId: '', apiKey: '' };
+        userConfig = { hasPersonalBase: false, baseId: '', apiKey: '', userRecordId: '' };
         return;
     }
     
@@ -476,13 +474,14 @@ async function fetchUserConfig() {
             userConfig = {
                 hasPersonalBase: data.hasPersonalBase || false,
                 baseId: data.baseId || '',
-                apiKey: data.apiKey || ''
+                apiKey: data.apiKey || '',
+                userRecordId: data.userRecordId || ''
             };
-            console.log('User config loaded:', userConfig.hasPersonalBase ? 'Personal base' : 'Community Stash');
+            console.log('User config loaded:', userConfig.hasPersonalBase ? 'Personal base' : 'Community Stash', 'recordId:', userConfig.userRecordId);
         }
     } catch (error) {
         console.error('Error fetching user config:', error);
-        userConfig = { hasPersonalBase: false, baseId: '', apiKey: '' };
+        userConfig = { hasPersonalBase: false, baseId: '', apiKey: '', userRecordId: '' };
     }
 }
 
@@ -703,9 +702,9 @@ async function submitBrew() {
     // Set the appropriate linked field
     brewData.fields[linkedFieldName] = [linkedRecordId];
     
-    // Add user email (CreatedBy field)
-    if (userEmail) {
-        brewData.fields['User'] = userEmail;
+    // Add user as linked record (if user is in Users table)
+    if (userConfig.userRecordId) {
+        brewData.fields['User'] = [userConfig.userRecordId];
     }
     
     // Auto-set Brew Method based on brewer
@@ -878,46 +877,16 @@ let currentPage = 1;
 const itemsPerPage = 10;
 
 
-// Load user names from Users table into cache
-async function loadUserNames() {
-    try {
-        const data = await callAirtableProxy('list', 'Users', {});
-        userNameCache = {};
-        data.records.forEach(record => {
-            const email = record.fields['Email'];
-            const name = record.fields['Name/Display Name'];
-            if (email && name) {
-                userNameCache[email.toLowerCase()] = name;
-            }
-        });
-        console.log('Loaded', Object.keys(userNameCache).length, 'user names');
-    } catch (error) {
-        console.error('Error loading user names:', error);
-    }
-}
-
-// Get display name for a user email
-function getUserDisplayName(email) {
-    if (!email) return '';
-    const name = userNameCache[email.toLowerCase()];
-    if (name) return name;
-    // Fallback to email prefix
-    return email.includes('@') ? email.split('@')[0] : email;
-}
-
 // Load and display brews
 async function loadBrews() {
     const brewsList = document.getElementById('brews-list');
     brewsList.innerHTML = '<div class="loading">Loading brews...</div>';
     
     try {
-        // Load user names in parallel with brews
-        const [data] = await Promise.all([
-            callAirtableProxy('list', CONFIG.brewTable, {
-                sort: { field: 'Brew Date', direction: 'desc' }
-            }),
-            loadUserNames()
-        ]);
+        // Fetch brews sorted by date (newest first)
+        const data = await callAirtableProxy('list', CONFIG.brewTable, {
+            sort: { field: 'Brew Date', direction: 'desc' }
+        });
         
         if (data.records.length === 0) {
             brewsList.innerHTML = `
@@ -979,10 +948,11 @@ function populateFilters(brews) {
     const varietals = [...new Set(brews.map(b => b.varietal).filter(Boolean))].sort();
     const brewers = [...new Set(brews.map(b => b.fields.Brewer).filter(Boolean))].sort();
     const users = [...new Set(brews.map(b => {
-        const userField = b.fields['User'];
-        if (!userField) return '';
-        const email = typeof userField === 'string' ? userField : (userField.email || userField.name || '');
-        return getUserDisplayName(email);
+        const userNameLookup = b.fields['Name/Display Name (from User)'];
+        if (Array.isArray(userNameLookup) && userNameLookup.length > 0) {
+            return userNameLookup[0];
+        }
+        return '';
     }).filter(Boolean))].sort();
     
     // Populate dropdowns (preserve current selection)
@@ -1032,12 +1002,10 @@ async function displayFilteredBrews() {
         // Brewer filter
         if (brewerFilter && brew.fields.Brewer !== brewerFilter) return false;
         
-        // User filter - match against display name from Users table
+        // User filter - match against lookup field from linked User record
         if (userFilter) {
-            const userField = brew.fields['User'];
-            if (!userField) return false;
-            const email = typeof userField === 'string' ? userField : (userField.email || userField.name || '');
-            const userValue = getUserDisplayName(email);
+            const userNameLookup = brew.fields['Name/Display Name (from User)'];
+            const userValue = Array.isArray(userNameLookup) && userNameLookup.length > 0 ? userNameLookup[0] : '';
             if (userValue !== userFilter) return false;
         }
         
@@ -1157,13 +1125,11 @@ async function createBrewCardFromEnriched(record) {
     const method = fields['Brew Method'] || '';
     const methodClass = method.toLowerCase();
     
-    // Get user who created the brew - look up name from Users table
+    // Get user who created the brew - use lookup field from linked User record
     let createdBy = '';
-    const userField = fields['User'];
-    
-    if (userField) {
-        const email = typeof userField === 'string' ? userField : (userField.email || userField.name || '');
-        createdBy = getUserDisplayName(email);
+    const userNameLookup = fields['Name/Display Name (from User)'];
+    if (Array.isArray(userNameLookup) && userNameLookup.length > 0) {
+        createdBy = userNameLookup[0];
     }
     
     card.innerHTML = `

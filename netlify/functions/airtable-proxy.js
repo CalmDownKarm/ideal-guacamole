@@ -407,7 +407,8 @@ exports.handler = async (event, context) => {
                                 const result = {
                                     hasPersonalBase: true,
                                     baseId: userRecord.fields['Airtable Base ID'] || '',
-                                    apiKey: userRecord.fields['Airtable API Key'] || ''
+                                    apiKey: userRecord.fields['Airtable API Key'] || '',
+                                    userRecordId: userRecord.id // Include record ID for linking
                                 };
                                 console.log('getUserConfig - Returning:', JSON.stringify(result, null, 2));
                                 return {
