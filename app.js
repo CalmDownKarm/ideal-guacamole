@@ -408,24 +408,17 @@ function initializeForm() {
         grindSizeManuallySet = false;
     };
     
-    // Handle "Other" option for brewer
-    const brewerOtherInput = document.getElementById('brewer-other');
-    
+    // Set defaults when brewer changes
     brewerSelect.addEventListener('change', (e) => {
-        const value = e.target.value;
-        if (value === '__other__') {
-            brewerOtherInput.style.display = 'block';
-            brewerOtherInput.focus();
-        } else {
-            brewerOtherInput.style.display = 'none';
-            brewerOtherInput.value = '';
-            window.setBrewerDefaults(value);
-        }
+        window.setBrewerDefaults(e.target.value);
     });
     
     // Set initial defaults on page load
     window.setBrewerDefaults(brewerSelect.value);
 }
+
+// Tom Select instance for brewer dropdown
+let brewerTomSelect = null;
 
 // Populate brewer select dropdown from existing brews
 function populateBrewerDatalist() {
@@ -438,14 +431,28 @@ function populateBrewerDatalist() {
         .filter(Boolean)
     )].sort();
     
-    // Build options: empty + brewers from data + "Other"
+    // Destroy existing Tom Select if present
+    if (brewerTomSelect) {
+        brewerTomSelect.destroy();
+        brewerTomSelect = null;
+    }
+    
+    // Build options
     let options = '<option value="">Select brewer</option>';
     brewers.forEach(b => {
         options += `<option value="${b}">${b}</option>`;
     });
-    options += '<option value="__other__">Other...</option>';
     
     brewerSelect.innerHTML = options;
+    
+    // Initialize Tom Select for searchable dropdown
+    if (window.TomSelect) {
+        brewerTomSelect = new TomSelect('#brewer', {
+            create: false,
+            sortField: { field: 'text', direction: 'asc' },
+            placeholder: 'Search or select brewer...'
+        });
+    }
 }
 
 // User config for multi-tenancy
@@ -569,11 +576,8 @@ async function submitBrew() {
     const now = new Date();
     const dateTime = now.toISOString().split('T')[0]; // "2024-12-24"
     
-    // Get brewer to determine defaults (handle "Other" option)
-    let brewer = formData.get('brewer') || '';
-    if (brewer === '__other__') {
-        brewer = formData.get('brewer-other') || '';
-    }
+    // Get brewer to determine defaults
+    const brewer = formData.get('brewer') || '';
     
     // Helper function to get default values based on brewer
     function getDefaultValue(field, brewer) {
@@ -791,17 +795,14 @@ async function submitBrew() {
             window.resetGrindSizeFlag();
         }
         
-        // Set default values
-        const brewerSelect = document.getElementById('brewer');
-        if (brewerSelect) {
-            brewerSelect.value = ''; // Clear brewer selection
-        }
-        
-        // Hide and clear "Other" brewer input
-        const brewerOther = document.getElementById('brewer-other');
-        if (brewerOther) {
-            brewerOther.style.display = 'none';
-            brewerOther.value = '';
+        // Clear brewer selection (handle Tom Select if present)
+        if (brewerTomSelect) {
+            brewerTomSelect.clear();
+        } else {
+            const brewerSelect = document.getElementById('brewer');
+            if (brewerSelect) {
+                brewerSelect.value = '';
+            }
         }
         
         // Apply defaults with forceReset to ensure grind size is reset
